@@ -38,16 +38,33 @@ endif
     obj-y += $(MODULE_NAME).o
     $(MODULE_NAME)-objs += common/connectivity_build_in_adapter.o
     $(MODULE_NAME)-objs += common/wmt_build_in_adapter.o
+    
+        ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
+        $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])
+        MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
+        $(info MTK_PLATFORM_ID is [${MTK_PLATFORM_ID}])
+       PATH_TO_WMT_DRV      = $(srctree)/drivers/misc/mediatek/connectivity/conninfra
+       PATH_TO_WLAN_CHR_DRV = $(srctree)/drivers/misc/mediatek/connectivity/wlan/adaptor
+       PATH_TO_WLAN_DRV    = $(srctree)/drivers/misc/mediatek/connectivity/wlan/core/gen4m
+
+        ABS_PATH_TO_WMT_DRV      = $(srctree)/drivers/misc/mediatek/connectivity/conninfra
+        ABS_PATH_TO_WLAN_CHR_DRV = $(srctree)/drivers/misc/mediatek/connectivity/wlan/adaptor
+        ABS_PATH_TO_WLAN_DRV     = $(srctree)/drivers/misc/mediatek/connectivity/wlan/core/gen4m
 
     ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
+    
+    
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export MTK_COMBO_CHIP=CONNAC
+        export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
+        export CONNAC_VER=2_0
         export WLAN_CHIP_ID=6877
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
         export ADAPTOR_OPTS=$(MTK_COMBO_CHIP)
-        export WIFI_IP_SET=2
+	 
+         export CONNAC_VER=2_0
+        export WIFI_IP_SET=3
         export WIFI_ECO_VER=1
 
         # Do build-in for xxx.c checking
@@ -56,6 +73,7 @@ endif
         obj-y += common/
         obj-y += wlan/adaptor/
         obj-y += wlan/core/gen4m/
+	
     endif
 
     export CFG_FM_CHIP_ID=6877
