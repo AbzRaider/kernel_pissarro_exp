@@ -105,6 +105,8 @@
 #define CONN_INFRA_WAKEUP_WF_ADDR (CONN_HOST_CSR_TOP_BASE_ADDR + 0x01A4)
 #define CONN_INFRA_ON2OFF_SLP_PROT_ACK_ADDR \
 	(CONN_HOST_CSR_TOP_BASE_ADDR + 0x0184)
+#define CONN_MCU_CONFG_ON_HOST_MAILBOX_WF_ADDR \
+	(CONN_HOST_CSR_TOP_BASE_ADDR + 0x0260)
 #define CONN_HW_VER_ADDR (CONN_INFRA_CFG_BASE_ADDR + 0x0000)
 #define WFSYS_SW_RST_B_ADDR (CONN_INFRA_RGU_BASE_ADDR + 0x0018)
 #define WFSYS_CPU_SW_RST_B_ADDR (CONN_INFRA_RGU_BASE_ADDR + 0x0010)
@@ -136,6 +138,12 @@
 #define WMMCU_MCU_ROM_EMI_DATE_ADDR 0xF027F0E0
 #define WMMCU_WIFI_ROM_EMI_DATE_ADDR 0xF027F0F0
 #define DATE_CODE_SIZE 16
+
+#define WF_PP_TOP_BASE             0x820CC000
+#define WF_PP_TOP_DBG_CTRL_ADDR    (WF_PP_TOP_BASE + 0x00F0)
+#define WF_PP_TOP_DBG_CS_0_ADDR    (WF_PP_TOP_BASE + 0x00F8)
+#define WF_PP_TOP_DBG_CS_1_ADDR    (WF_PP_TOP_BASE + 0x00FC)
+#define WF_PP_TOP_DBG_CS_2_ADDR    (WF_PP_TOP_BASE + 0x0100)
 
 #if CFG_MTK_ANDROID_EMI
 extern phys_addr_t gConEmiPhyBaseFinal;
@@ -206,11 +214,6 @@ union soc3_0_WPDMA_INT_MASK {
 *                         D A T A   T Y P E S
 ********************************************************************************
 */
-enum ENUM_WLAN_POWER_ON_DOWNLOAD {
-	ENUM_WLAN_POWER_ON_DOWNLOAD_EMI = 0,
-	ENUM_WLAN_POWER_ON_DOWNLOAD_ROM_PATCH = 1,
-	ENUM_WLAN_POWER_ON_DOWNLOAD_WIFI_RAM_CODE = 2
-};
 
 struct ROM_EMI_HEADER {
 	uint8_t ucDateTime[16];
@@ -230,10 +233,8 @@ extern struct platform_device *g_prPlatDev;
 #if (CFG_SUPPORT_CONNINFRA == 1)
 extern u_int8_t g_IsWfsysBusHang;
 extern struct completion g_triggerComp;
-extern bool g_IsTriggerTimeout;
 extern u_int8_t fgIsResetting;
 extern u_int8_t g_fgRstRecover;
-extern struct regmap *g_regmap;
 #endif
 
 #if (CFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT == 1)
@@ -242,6 +243,7 @@ extern u_int8_t g_IsNeedWaitCoredump;
 
 extern struct PLE_TOP_CR rSoc3_0_PleTopCr;
 extern struct PSE_TOP_CR rSoc3_0_PseTopCr;
+extern struct PP_TOP_CR rSoc3_0_PpTopCr;
 /*******************************************************************************
 *                           P R I V A T E   D A T A
 ********************************************************************************
@@ -347,9 +349,6 @@ void wlanCoAntVFE28Dis(void);
 #if (CFG_SUPPORT_CONNINFRA == 1)
 int wlanConnacPccifon(void);
 int wlanConnacPccifoff(void);
-int soc3_0_Trigger_whole_chip_rst(char *reason);
-bool soc3_0_Sw_interrupt_handler(struct ADAPTER *prAdapter);
-void soc3_0_Conninfra_cb_register(void);
 extern void update_driver_reset_status(uint8_t fgIsResetting);
 extern int32_t get_wifi_process_status(void);
 extern int32_t get_wifi_powered_status(void);
@@ -375,14 +374,6 @@ uint32_t soc3_0_wlanPowerOnDownload(
 int32_t soc3_0_wlanPowerOnInit(
 	enum ENUM_WLAN_POWER_ON_DOWNLOAD eDownloadItem);
 #endif
-
-#if (CFG_SUPPORT_PRE_ON_PHY_ACTION == 1)
-uint32_t soc3_0_wlanPhyAction(IN struct ADAPTER *prAdapter);
-int soc3_0_wlanPreCalPwrOn(void);
-int soc3_0_wlanPreCal(void);
-uint8_t *soc3_0_wlanGetCalResult(uint32_t *prCalSize);
-void soc3_0_wlanCalDebugCmd(uint32_t cmd, uint32_t para);
-#endif /* (CFG_SUPPORT_PRE_ON_PHY_ACTION == 1) */
 
 void soc3_0_icapRiseVcoreClockRate(void);
 void soc3_0_icapDownVcoreClockRate(void);
