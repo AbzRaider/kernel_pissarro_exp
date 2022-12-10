@@ -77,7 +77,11 @@
  *   C O N S T A N T S
  *******************************************************************************
  */
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#define MAX_SUBBAND_NUM     7
+#else
 #define MAX_SUBBAND_NUM     6
+#endif
 #define MAX_SUBBAND_NUM_5G  8
 
 #define COUNTRY_CODE_NULL      ((uint16_t)0x0)
@@ -583,13 +587,22 @@
 #define UNII2C_UPPER_BOUND   144
 #define UNII3_LOWER_BOUND    149
 #define UNII3_UPPER_BOUND    165
+/*6G SubBand spec*/
+#define UNII5_LOWER_BOUND    1
+#define UNII5_UPPER_BOUND    93
+#define UNII6_LOWER_BOUND    97
+#define UNII6_UPPER_BOUND    113
+#define UNII7_LOWER_BOUND    117
+#define UNII7_UPPER_BOUND    185
+#define UNII8_LOWER_BOUND    189
+#define UNII8_UPPER_BOUND    233
 
 #if CFG_SUPPORT_PWR_LIMIT_COUNTRY
 #define POWER_LIMIT_TABLE_NULL			0xFFFF
 #define MAX_TX_POWER				63
 #define MIN_TX_POWER				-64
 /*align Frimware Max Power Limit CH Num*/
-#define MAX_CMD_SUPPORT_CHANNEL_NUM			64
+#define MAX_CMD_SUPPORT_CHANNEL_NUM			60
 #endif
 
 #if (CFG_SUPPORT_SINGLE_SKU == 1)
@@ -607,7 +620,12 @@
 #if CFG_SUPPORT_PWR_LIMIT_COUNTRY
 
 /* Define Tx Power Control Channel Type */
-#define MAX_TX_PWR_CTRL_ELEMENT_NAME_SIZE	16
+//#ifndef OPLUS_FEATURE_WIFI_SAR
+//Modify for: change Tx Power scenario name length to 32 for framework wifi sar scenario
+//#define MAX_TX_PWR_CTRL_ELEMENT_NAME_SIZE	16
+//#else
+#define MAX_TX_PWR_CTRL_ELEMENT_NAME_SIZE	32
+//#endif /* OPLUS_FEATURE_WIFI_SAR */
 #define PWR_CTRL_CHNL_TYPE_KEY_ALL		"ALL"
 #define PWR_CTRL_CHNL_TYPE_KEY_2G4		"2G4"
 #define PWR_CTRL_CHNL_TYPE_KEY_5G		"5G"
@@ -617,6 +635,15 @@
 #define PWR_CTRL_CHNL_TYPE_KEY_5G_BAND2		"5GBAND2"
 #define PWR_CTRL_CHNL_TYPE_KEY_5G_BAND3		"5GBAND3"
 #define PWR_CTRL_CHNL_TYPE_KEY_5G_BAND4		"5GBAND4"
+#if (CFG_SUPPORT_WIFI_6G == 1)
+#define PWR_CTRL_CHNL_TYPE_KEY_6G		"6G"
+#define PWR_CTRL_CHNL_TYPE_KEY_6G_BAND1		"6GBAND1"
+#define PWR_CTRL_CHNL_TYPE_KEY_6G_BAND2		"6GBAND2"
+#define PWR_CTRL_CHNL_TYPE_KEY_6G_BAND3		"6GBAND3"
+#define PWR_CTRL_CHNL_TYPE_KEY_6G_BAND4		"6GBAND4"
+#endif
+#define PWR_CTRL_CHNL_TYPE_KEY_5G_AX160		"AX160"
+
 
 #define PWR_CFG_PRAM_NUM_ALL_RATE	1
 
@@ -626,6 +653,9 @@
 #else
 #define	PWR_CFG_PRAM_NUM_AC			9
 #endif /* CFG_SUPPORT_DYNA_TX_PWR_CTRL_11AC_V2_SETTING */
+
+#define PWR_CFG_BACKOFF_MIN		-64
+#define PWR_CFG_BACKOFF_MAX		64
 
 enum ENUM_TX_POWER_CTRL_LIST_TYPE {
 	PWR_CTRL_TYPE_DEFAULT_LIST = 0,
@@ -668,6 +698,14 @@ enum ENUM_TX_POWER_CTRL_CHANNEL_TYPE {
 	PWR_CTRL_CHNL_TYPE_5G_BAND2,
 	PWR_CTRL_CHNL_TYPE_5G_BAND3,
 	PWR_CTRL_CHNL_TYPE_5G_BAND4,
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	PWR_CTRL_CHNL_TYPE_6G_NORMAL,
+	PWR_CTRL_CHNL_TYPE_6G,
+	PWR_CTRL_CHNL_TYPE_6G_BAND1,
+	PWR_CTRL_CHNL_TYPE_6G_BAND2,
+	PWR_CTRL_CHNL_TYPE_6G_BAND3,
+	PWR_CTRL_CHNL_TYPE_6G_BAND4,
+#endif
 };
 
 enum ENUM_POWER_LIMIT {
@@ -713,8 +751,42 @@ enum ENUM_POWER_LIMIT_HE {
 	PWR_LIMIT_RU996_L, /* MCS0~4 */
 	PWR_LIMIT_RU996_H, /* MCS5~9 */
 	PWR_LIMIT_RU996_U, /* MCS10~11 */
-	PWR_LIMIT_HE_NUM
+	PWR_LIMIT_HE_NUM,
+	PWR_LIMIT_RU1992_L = PWR_LIMIT_HE_NUM, /* MCS0~4 */
+	PWR_LIMIT_RU1992_H, /* MCS5~9 */
+	PWR_LIMIT_RU1992_U, /* MCS10~11 */
+	PWR_LIMIT_6E_NUM,
+	PWR_LIMIT_HE_BW160_NUM = PWR_LIMIT_6E_NUM,
 };
+
+
+#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT_ANT_TAG
+
+/* Revise channel power limit by scenario with parameter
+ * (WF05G, WF02G4, WF15G, WF12G4)
+ */
+enum ENUM_POWER_ANT_TAG {
+	POWER_ANT_ALL_T = 0,
+	POWER_ANT_MIMO_1T,
+	POWER_ANT_MIMO_2T,
+	POWER_ANT_TAG_NUM
+};
+
+enum ENUM_POWER_ANT_BAND {
+	POWER_ANT_2G4_BAND = 0,
+	POWER_ANT_5G_BAND1,
+	POWER_ANT_5G_BAND2,
+	POWER_ANT_5G_BAND3,
+	POWER_ANT_5G_BAND4,
+	POWER_ANT_BAND_NUM
+};
+
+enum ENUM_POWER_ANT_PARA {
+	POWER_ANT_WF0 = 0,
+	POWER_ANT_WF1,
+	POWER_ANT_NUM
+};
+#endif
 
 struct TX_PWR_CTRL_CHANNEL_SETTING {
 	enum ENUM_TX_POWER_CTRL_CHANNEL_TYPE eChnlType;
@@ -723,9 +795,25 @@ struct TX_PWR_CTRL_CHANNEL_SETTING {
 	enum ENUM_TX_POWER_CTRL_VALUE_SIGN op[PWR_LIMIT_NUM];
 	int8_t i8PwrLimit[PWR_LIMIT_NUM];
 
-	enum ENUM_TX_POWER_CTRL_VALUE_SIGN opHE[PWR_LIMIT_HE_NUM];
-	int8_t i8PwrLimitHE[PWR_LIMIT_HE_NUM];
+	enum ENUM_TX_POWER_CTRL_VALUE_SIGN opHE[PWR_LIMIT_HE_BW160_NUM];
+	int8_t i8PwrLimitHE[PWR_LIMIT_HE_BW160_NUM];
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	enum ENUM_TX_POWER_CTRL_VALUE_SIGN op6E[PWR_LIMIT_6E_NUM];
+	int8_t i8PwrLimit6E[PWR_LIMIT_6E_NUM];
+#endif
 };
+
+
+#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT_ANT_TAG
+struct TX_PWR_CTRL_ANT_SETTING {
+	int8_t aiPwrAnt2G4[POWER_ANT_NUM];
+	int8_t aiPwrAnt5GB1[POWER_ANT_NUM];
+	int8_t aiPwrAnt5GB2[POWER_ANT_NUM];
+	int8_t aiPwrAnt5GB3[POWER_ANT_NUM];
+	int8_t aiPwrAnt5GB4[POWER_ANT_NUM];
+};
+#endif
 
 struct TX_PWR_CTRL_ELEMENT {
 	struct LINK_ENTRY node;
@@ -733,8 +821,15 @@ struct TX_PWR_CTRL_ELEMENT {
 	char name[MAX_TX_PWR_CTRL_ELEMENT_NAME_SIZE]; /* scenario name */
 	uint8_t index; /* scenario index */
 	enum ENUM_TX_POWER_CTRL_TYPE eCtrlType;
+	uint16_t u2CountryCode;
 	uint8_t settingCount;
+	/* channel setting count. [.....] means one channel setting */
+
+#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT_ANT_TAG
+	struct TX_PWR_CTRL_ANT_SETTING aiPwrAnt[POWER_ANT_TAG_NUM];
+#endif
 	struct TX_PWR_CTRL_CHANNEL_SETTING rChlSettingList[1];
+	/* always keep it the last one. */
 };
 
 struct PARAM_TX_PWR_CTRL_IOCTL {
@@ -743,7 +838,6 @@ struct PARAM_TX_PWR_CTRL_IOCTL {
 	uint8_t index;
 	uint8_t *newSetting;
 };
-
 #endif
 
 enum ENUM_POWER_LIMIT_SUBBAND {
@@ -752,6 +846,12 @@ enum ENUM_POWER_LIMIT_SUBBAND {
 	POWER_LIMIT_UNII2A = 2,
 	POWER_LIMIT_UNII2C = 3,
 	POWER_LIMIT_UNII3 = 4,
+#if (CFG_SUPPORT_WIFI_6G == 1)
+	POWER_LIMIT_UNII5 = 5,
+	POWER_LIMIT_UNII6 = 6,
+	POWER_LIMIT_UNII7 = 7,
+	POWER_LIMIT_UNII8 = 8,
+#endif
 	POWER_LIMIT_SUBAND_NUM
 };
 
@@ -760,7 +860,8 @@ enum ENUM_CHNL_SPAN {
 	CHNL_SPAN_5 = 1,
 	CHNL_SPAN_10 = 2,
 	CHNL_SPAN_20 = 4,
-	CHNL_SPAN_40 = 8
+	CHNL_SPAN_40 = 8,
+	CHNL_SPAN_80 = 16
 };
 
 /* Define BSS operating bandwidth */
@@ -925,13 +1026,47 @@ struct COUNTRY_POWER_LIMIT_TABLE_CONFIGURATION_HE {
 	int8_t aucPwrLimit[PWR_LIMIT_HE_NUM];
 };
 
+struct COUNTRY_POWER_LIMIT_TABLE_CONFIGURATION_HE_BW160 {
+	uint8_t aucCountryCode[2];
+	uint8_t ucCentralCh;
+	int8_t aucPwrLimit[PWR_LIMIT_HE_BW160_NUM];
+};
+
+#if (CFG_SUPPORT_WIFI_6G == 1)
+struct COUNTRY_POWER_LIMIT_TABLE_CONFIGURATION_6E {
+	uint8_t aucCountryCode[2];
+	uint8_t ucCentralCh;
+	int8_t aucPwrLimit[PWR_LIMIT_6E_NUM];
+};
+#endif
 
 struct SUBBAND_CHANNEL {
+	enum ENUM_BAND eBand;
 	uint8_t ucStartCh;
 	uint8_t ucEndCh;
 	uint8_t ucInterval;
 	uint8_t ucReserved;
 };
+
+//#ifdef OPLUS_FEATURE_WIFI_CUSTOMER_NVRAM
+struct oplus_country_pwr_limit {
+    uint32_t project;
+    uint16_t tableSize;
+    struct COUNTRY_POWER_LIMIT_TABLE_CONFIGURATION *pwrLimitTable;
+};
+
+struct oplus_country_pwr_limit_he {
+    uint32_t project;
+    uint16_t tableSize;
+    struct COUNTRY_POWER_LIMIT_TABLE_CONFIGURATION_HE *pwrLimitTableHE;
+};
+
+struct oplus_country_pwr_limit_default {
+    uint32_t project;
+    uint16_t tableSize;
+    struct COUNTRY_POWER_LIMIT_TABLE_DEFAULT *pwrLimitTableDefault;
+};
+//#endif
 
 #endif /* CFG_SUPPORT_PWR_LIMIT_COUNTRY */
 
@@ -972,8 +1107,10 @@ struct mtk_regd_control {
 	struct GLUE_INFO *pGlueInfo; /*wlan GlueInfo*/
 	u8 n_channel_active_2g;
 	u8 n_channel_active_5g;
+	u8 n_channel_active_6g;
 	struct CMD_DOMAIN_CHANNEL channels[MAX_SUPPORTED_CH_COUNT];
 	enum nl80211_dfs_regions dfs_region;
+	enum ENUM_DBDC_BN eDBDCBand;
 };
 
 #if (CFG_SUPPORT_SINGLE_SKU_LOCAL_DB == 1)
@@ -1024,6 +1161,9 @@ void rlmDomainGetDfsChnls(struct ADAPTER *prAdapter,
 			  uint8_t ucMaxChannelNum, uint8_t *pucNumOfChannel,
 			  struct RF_CHANNEL_INFO *paucChannelList);
 
+u_int8_t rlmDomainIsDfsChnls(struct ADAPTER *prAdapter,
+				uint8_t ucChannel);
+
 void rlmDomainSendCmd(struct ADAPTER *prAdapter);
 
 void rlmDomainSendDomainInfoCmd(struct ADAPTER *prAdapter);
@@ -1034,7 +1174,7 @@ void rlmDomainSendPassiveScanInfoCmd(struct ADAPTER
 uint32_t rlmDomainSupOperatingClassIeFill(uint8_t *pBuf);
 
 u_int8_t rlmDomainCheckChannelEntryValid(struct ADAPTER
-		*prAdapter, uint8_t ucCentralCh);
+		*prAdapter, enum ENUM_BAND eBand, uint8_t ucCentralCh);
 
 uint8_t rlmDomainGetCenterChannel(enum ENUM_BAND eBand,
 				  uint8_t ucPriChannel,
@@ -1076,6 +1216,8 @@ void rlmDomainSetCountryCode(char *alpha2,
 void rlmDomainSetDfsRegion(enum nl80211_dfs_regions
 			   dfs_region);
 enum nl80211_dfs_regions rlmDomainGetDfsRegion(void);
+void rlmDomainSetDfsDbdcBand(enum ENUM_DBDC_BN eDBDCBand);
+enum ENUM_DBDC_BN rlmDomainGetDfsDbdcBand(void);
 void rlmDomainResetCtrlInfo(u_int8_t force);
 void rlmDomainAddActiveChannel(u8 band);
 u8 rlmDomainGetActiveChannelCount(u8 band);
@@ -1092,7 +1234,10 @@ const struct ieee80211_regdomain
 *rlmDomainSearchRegdomainFromLocalDataBase(char *alpha2);
 struct GLUE_INFO *rlmDomainGetGlueInfo(void);
 bool rlmDomainIsEfuseUsed(void);
-uint8_t rlmDomainGetChannelBw(uint8_t channelNum);
+uint8_t rlmDomainGetChannelBw(enum ENUM_BAND eBand, uint8_t channelNum);
+uint8_t rlmDomainGetChannelBwForCountry(
+	struct ADAPTER *prAdapter, enum ENUM_BAND eBand,
+	uint8_t channelNum, enum ENUM_CHNL_EXT eSco, uint8_t maxChannelBw);
 
 #if (CFG_SUPPORT_SINGLE_SKU_LOCAL_DB == 1)
 extern const struct mtk_regdomain *g_prRegRuleTable[];
@@ -1141,10 +1286,24 @@ struct TX_PWR_CTRL_ELEMENT *txPwrCtrlFindElement(
 				enum ENUM_TX_POWER_CTRL_LIST_TYPE eListType);
 void txPwrCtrlAddElement(struct ADAPTER *prAdapter,
 				struct TX_PWR_CTRL_ELEMENT *prElement);
+
+#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT_ANT_TAG
+int32_t txPwrParseTagMimo1T(
+	char *pStart, char *pEnd, uint8_t cTagParaNum,
+	struct TX_PWR_CTRL_ELEMENT *pRecord);
+int32_t txPwrParseTagMimo2T(
+	char *pStart, char *pEnd, uint8_t cTagParaNum,
+	struct TX_PWR_CTRL_ELEMENT *pRecord);
+int32_t txPwrParseTagAllT(
+	char *pStart, char *pEnd, uint8_t cTagParaNum,
+	struct TX_PWR_CTRL_ELEMENT *pRecord);
+#endif
+
 #endif
 /*******************************************************************************
  *   F U N C T I O N S
  *******************************************************************************
  */
 
+uint8_t regCountryDfsMapping(IN struct ADAPTER *prAdapter);
 #endif /* _RLM_DOMAIN_H */
