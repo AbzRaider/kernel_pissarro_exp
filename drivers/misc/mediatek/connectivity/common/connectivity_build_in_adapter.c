@@ -135,6 +135,18 @@ void connectivity_export_tracing_record_cmdline(struct task_struct *tsk)
 }
 EXPORT_SYMBOL(connectivity_export_tracing_record_cmdline);
 
+void connectivity_export_conap_scp_init(unsigned int chip_info, phys_addr_t emi_phy_addr)
+{
+}
+EXPORT_SYMBOL(connectivity_export_conap_scp_init);
+
+
+void connectivity_export_conap_scp_deinit(void)
+{
+}
+EXPORT_SYMBOL(connectivity_export_conap_scp_deinit);
+
+
 #ifdef CPU_BOOST
 bool connectivity_export_spm_resource_req(unsigned int user,
 					  unsigned int req_mask)
@@ -198,6 +210,8 @@ void connectivity_export_clk_buf_show_status_info(void)
 	defined(CONFIG_MACH_MT6739) || \
 	defined(CONFIG_MACH_MT6785) || \
 	defined(CONFIG_MACH_MT6873) || \
+	defined(CONFIG_MACH_MT6885) || \
+	defined(CONFIG_MACH_MT6893) || \
 	defined(CONFIG_MACH_MT6877)
 #if defined(CONFIG_MTK_BASE_POWER)
 	clk_buf_show_status_info();
