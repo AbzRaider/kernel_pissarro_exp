@@ -88,6 +88,8 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
 
 
 ccflags-y += -Werror
+ccflags-y += -Wno-implicit-function-declaration
+
 
 ifneq ($(filter "MT6628",$(CONFIG_MTK_COMBO_CHIP)),)
     ccflags-y += -D MT6628
