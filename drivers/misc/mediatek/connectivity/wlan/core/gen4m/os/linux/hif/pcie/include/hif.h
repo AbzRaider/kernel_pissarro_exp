@@ -175,8 +175,8 @@ struct GL_HIF_INFO {
 	struct ERR_RECOVERY_CTRL_T rErrRecoveryCtl;
 	struct timer_list rSerTimer;
 	struct list_head rTxCmdQ;
-	struct list_head rTxDataQ;
-	uint32_t u4TxDataQLen;
+	struct list_head rTxDataQ[NUM_OF_TX_RING];
+	uint32_t u4TxDataQLen[NUM_OF_TX_RING];
 
 	bool fgIsPowerOff;
 	bool fgIsDumpLog;
@@ -184,6 +184,9 @@ struct GL_HIF_INFO {
 
 	uint32_t u4WakeupIntSta;
 	bool fgIsBackupIntSta;
+
+	uint32_t u4TxRingPrefetchDefaultVal;
+	u_int8_t fgTxRingPrefetchEn[NUM_OF_TX_RING];
 };
 
 struct BUS_INFO {
@@ -194,6 +197,7 @@ struct BUS_INFO {
 	const uint32_t tx_ring_fwdl_idx;
 	const uint32_t tx_ring0_data_idx;
 	const uint32_t tx_ring1_data_idx;
+	const uint32_t tx_ring2_data_idx;
 	const unsigned int max_static_map_addr;
 	const uint32_t fw_own_clear_addr;
 	const uint32_t fw_own_clear_bit;
@@ -258,6 +262,7 @@ struct BUS_INFO {
 	struct DMASHDL_CFG *prDmashdlCfg;
 	struct PLE_TOP_CR *prPleTopCr;
 	struct PSE_TOP_CR *prPseTopCr;
+	struct PP_TOP_CR *prPpTopCr;
 	struct pse_group_info *prPseGroup;
 	const uint32_t u4PseGroupLen;
 
@@ -270,6 +275,7 @@ struct BUS_INFO {
 	void (*disableSwInterrupt)(struct ADAPTER *prAdapter);
 	void (*processTxInterrupt)(struct ADAPTER *prAdapter);
 	void (*processRxInterrupt)(struct ADAPTER *prAdapter);
+	void (*processAbnormalInterrupt)(struct ADAPTER *prAdapter);
 	void (*lowPowerOwnRead)(struct ADAPTER *prAdapter, u_int8_t *pfgResult);
 	void (*lowPowerOwnSet)(struct ADAPTER *prAdapter, u_int8_t *pfgResult);
 	void (*lowPowerOwnClear)(struct ADAPTER *prAdapter,
@@ -299,8 +305,13 @@ struct BUS_INFO {
 	bool (*wfdmaAllocRxRing)(
 		struct GLUE_INFO *prGlueInfo,
 		bool fgAllocMem);
-	void (*setPdmaIntMask)(struct GLUE_INFO *prGlueInfo, u_int8_t fgEnable);
+	void (*setDmaIntMask)(struct GLUE_INFO *prGlueInfo,
+		uint8_t ucType, u_int8_t fgEnable);
 	void (*enableFwDlMode)(struct ADAPTER *prAdapter);
+
+	void (*enableTxDataRingPrefetch)(
+		struct GLUE_INFO *prGlueInfo, uint32_t u4Port);
+	void (*resetTxDataRingPrefetch)(struct GLUE_INFO *prGlueInfo);
 
 	struct SW_WFDMA_INFO rSwWfdmaInfo;
 };
@@ -347,6 +358,8 @@ void glSetPowerState(IN struct GLUE_INFO *prGlueInfo, IN uint32_t ePowerMode);
 void glGetDev(void *ctx, struct device **dev);
 
 void glGetHifDev(struct GL_HIF_INFO *prHif, struct device **dev);
+
+struct mt66xx_hif_driver_data *get_platform_driver_data(void);
 
 void glGetChipInfo(void **prChipInfo);
 
