@@ -142,7 +142,7 @@ const struct of_device_id apwmt_of_ids[] = {
 	{.compatible = "mediatek,mt6853-consys", .data = &consys_ic_ops_mt6853},
 	{.compatible = "mediatek,mt6855-consys", .data = &consys_ic_ops_mt6855},
 	{.compatible = "mediatek,mt6873-consys", .data = &consys_ic_ops_mt6873},
-	{.compatible = "mediatek,mt6877-consys", .data = &consys_ic_ops_mt6873},
+	{.compatible = "mediatek,mt6877-consys", .data = &consys_ic_ops_mt6877},
 	{.compatible = "mediatek,mt8168-consys", .data = &consys_ic_ops_mt8168},
 	{}
 };
