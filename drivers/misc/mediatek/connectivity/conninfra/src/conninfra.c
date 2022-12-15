@@ -314,4 +314,3 @@ int conninfra_bus_clock_ctrl(enum consys_drv_type drv_type, unsigned int bus_clo
 	return conninfra_core_bus_clock_ctrl(drv_type, bus_clock, status);
 }
 EXPORT_SYMBOL(conninfra_bus_clock_ctrl);
-
