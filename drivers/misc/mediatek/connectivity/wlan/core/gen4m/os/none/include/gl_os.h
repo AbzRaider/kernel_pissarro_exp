@@ -187,6 +187,8 @@ extern u_int8_t fgIsBusAccessFailed;
 /* for non-wfa vendor specific IE buffer */
 #define NON_WFA_VENDOR_IE_MAX_LEN	(128)
 
+#define FW_LOG_CMD_ON_OFF		0
+#define FW_LOG_CMD_SET_LEVEL		1
 
 /*******************************************************************************
  *                    E X T E R N A L   R E F E R E N C E S
@@ -242,6 +244,13 @@ extern u_int8_t fgIsBusAccessFailed;
 #define GLUE_FLAG_NOTIFY_MD_CRASH_BIT		(18)
 #define GLUE_FLAG_DRV_INT_BIT			(19)
 
+#if (CFG_SUPPORT_POWER_THROTTLING == 1)
+#define GLUE_FLAG_CNS_PWR_LEVEL_BIT		(21)
+#define GLUE_FLAG_CNS_PWR_TEMP_BIT		(22)
+#define GLUE_FLAG_CNS_PWR_LEVEL			BIT(21)
+#define GLUE_FLAG_CNS_PWR_TEMP			BIT(22)
+#endif
+
 #if CFG_ENABLE_BT_OVER_WIFI
 #define GLUE_BOW_KFIFO_DEPTH        (1024)
 /* #define GLUE_BOW_DEVICE_NAME        "MT6620 802.11 AMP" */
@@ -272,6 +281,7 @@ struct GL_WPA_INFO {
 	uint32_t u4Mfp;
 	uint8_t ucRSNMfpCap;
 #endif
+	uint16_t u2RSNXCap;
 };
 
 #if CFG_SUPPORT_REPLAY_DETECTION
@@ -482,10 +492,6 @@ struct GLUE_INFO {
 	struct GL_P2P_INFO *prP2PInfo[KAL_P2P_NUM];
 #endif
 
-#if CFG_SUPPORT_SNIFFER
-	u_int8_t fgIsEnableMon;
-#endif
-
 	u_int8_t fgIsInSuspendMode;
 
 	/* registry info */
@@ -509,6 +515,17 @@ struct GLUE_INFO {
 	/* not necessary for built */
 	/* TODO: os-related */
 	uint32_t u4ReadyFlag;	/* check if card is ready */
+
+#ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
+	uint8_t fgIsEnableMon;
+	uint8_t ucPriChannel;
+	uint8_t ucChannelS1;
+	uint8_t ucChannelS2;
+	uint8_t ucBand;
+	uint8_t ucChannelWidth;
+	uint8_t ucSco;
+#endif
+
 #if 0
 
 	/* Device */
@@ -739,12 +756,6 @@ struct GLUE_INFO {
 	uint16_t u2MetUdpPort;
 #endif
 
-#if CFG_SUPPORT_SNIFFER
-	u_int8_t fgIsEnableMon;
-	struct net_device *prMonDevHandler;
-	struct work_struct monWork;
-#endif
-
 	int32_t i4RssiCache;
 	uint32_t u4LinkSpeedCache;
 
@@ -852,7 +863,10 @@ struct NL80211_DRIVER_STRING_CMD_PARAMS {
 	struct NL80211_DRIVER_TEST_MODE_PARAMS hdr;
 	uint32_t reply_buf_size;
 	uint32_t reply_len;
-	uint8_t *reply_buf;
+	union _reply_buf {
+		uint8_t *ptr;
+		uint64_t data;
+	} reply_buf;
 };
 
 /*SW CMD */
@@ -935,6 +949,12 @@ struct PACKET_PRIVATE_DATA {
 struct PACKET_PRIVATE_RX_DATA {
 	uint64_t u8IntTime;	/* 8byte */
 	uint64_t u8RxTime;	/* 8byte */
+};
+
+struct CMD_CONNSYS_FW_LOG {
+	int32_t fgCmd;
+	int32_t fgValue;
+	u_int8_t fgEarlySet;
 };
 
 /*******************************************************************************
@@ -1225,6 +1245,16 @@ extern int glUnregisterEarlySuspend(struct early_suspend
 				    *prDesc);
 #endif
 
+extern const uint8_t *kalFindIeMatchMask(uint8_t eid,
+				const uint8_t *ies, int len,
+				const uint8_t *match,
+				int match_len, int match_offset,
+				const uint8_t *match_mask);
+
+extern const uint8_t *kalFindIeExtIE(uint8_t eid,
+				uint8_t exteid,
+				const uint8_t *ies, int len);
+
 #if CFG_MET_PACKET_TRACE_SUPPORT
 #ifdef CFG_REMIND_IMPLEMENT
 #define kalMetTagPacket(_prGlueInfo, _prPacket, _eTag) \
@@ -1248,12 +1278,13 @@ void wlanUpdateChannelTable(struct GLUE_INFO *prGlueInfo);
 #ifdef CFG_REMIND_IMPLEMENT
 #define wlanUpdateDfsChannelTable(_prGlueInfo, \
 		_ucRoleIdx, _ucChannel, _ucBandWidth, \
-		_eBssSCO, _u4CenterFreq) \
+		_eBssSCO, _u4CenterFreq, _eBand) \
 	KAL_NEED_IMPLEMENT(__FILE__, __func__, __LINE__)
 #else
 void wlanUpdateDfsChannelTable(struct GLUE_INFO *prGlueInfo,
 		uint8_t ucRoleIdx, uint8_t ucChannel, uint8_t ucBandWidth,
-		enum ENUM_CHNL_EXT eBssSCO, uint32_t u4CenterFreq);
+		enum ENUM_CHNL_EXT eBssSCO, uint32_t u4CenterFreq,
+		enum ENUM_BAND eBand);
 #endif
 #endif
 
