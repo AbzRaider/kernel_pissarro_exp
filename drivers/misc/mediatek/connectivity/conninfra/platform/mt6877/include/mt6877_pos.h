@@ -8,7 +8,7 @@
 
 #include <linux/types.h>
 
-unsigned int consys_emi_set_remapping_reg_mt6877(phys_addr_t, phys_addr_t, phys_addr_t);
+unsigned int consys_emi_set_remapping_reg_mt6877(phys_addr_t, phys_addr_t);
 
 int consys_conninfra_on_power_ctrl_mt6877(unsigned int enable);
 int consys_conninfra_wakeup_mt6877(void);
@@ -28,7 +28,6 @@ void consys_sema_release_mt6877(unsigned int index);
 
 int consys_spi_read_mt6877(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 int consys_spi_write_mt6877(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
-int consys_spi_update_bits_mt6877(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask);
 
 int consys_spi_clock_switch_mt6877(enum connsys_spi_speed_type type);
 int consys_subsys_status_update_mt6877(bool, int);

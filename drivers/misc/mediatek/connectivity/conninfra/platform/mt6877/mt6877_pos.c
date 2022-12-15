@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2020 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/pinctrl/consumer.h>
-#include <linux/irqflags.h>
 #include <connectivity_build_in_adapter.h>
 
 #include "consys_hw.h" /* for semaphore index */
@@ -20,13 +20,11 @@
 /* For function declaration */
 #include "mt6877.h"
 #include "mt6877_pos.h"
-#include "pmic_mng.h"
 
 /*******************************************************************************
 *                                 M A C R O S
 ********************************************************************************
 */
-#define SEMA_HOLD_TIME_THRESHOLD 10 //10 ms
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -47,8 +45,6 @@ struct a_die_reg_config {
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-static u64 sema_get_time[CONN_SEMA_NUM_MAX];
-
 static int consys_spi_read_nolock(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 static int consys_spi_write_nolock(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
 #ifndef CONFIG_FPGA_EARLY_PORTING
@@ -61,8 +57,7 @@ static int connsys_adie_clock_buffer_setting(bool bt_only);
 
 unsigned int consys_emi_set_remapping_reg_mt6877(
 	phys_addr_t con_emi_base_addr,
-	phys_addr_t md_shared_emi_base_addr,
-	phys_addr_t gps_emi_base_addr)
+	phys_addr_t md_shared_emi_base_addr)
 {
 	CONSYS_REG_WRITE_OFFSET_RANGE(
 		CONN_HOST_CSR_TOP_CONN2AP_REMAP_MCU_EMI_BASE_ADDR_ADDR,
@@ -511,9 +506,7 @@ int consys_polling_chipid_mt6877(void)
 	if (retry == 0) {
 		pr_err("Read CONSYS version id fail. Expect 0x%x but get 0x%x\n",
 			CONN_HW_VER, consys_hw_ver);
-#if defined(KERNEL_clk_buf_show_status_info)
 		connectivity_export_clk_buf_show_status_info();
-#endif
 		return -1;
 	}
 
@@ -527,7 +520,7 @@ int connsys_d_die_cfg_mt6877(void)
 	memset_io(CONN_INFRA_SYSRAM_BASE, 0x0, CONN_INFRA_SYSRAM_SIZE);
 #else
 	void __iomem *addr = NULL;
-	addr = ioremap(CONN_INFRA_SYSRAM_BASE, CONN_INFRA_SYSRAM_SIZE);
+	addr = ioremap_nocache(CONN_INFRA_SYSRAM_BASE, CONN_INFRA_SYSRAM_SIZE);
 	if (addr != NULL) {
 		memset_io(addr, 0x0, CONN_INFRA_SYSRAM_SIZE);
 		iounmap(addr);
@@ -1187,18 +1180,11 @@ int connsys_low_power_setting_mt6877(unsigned int curr_status, unsigned int next
 {
 	bool bt_only = false;
 	void __iomem *addr = NULL;
-	unsigned int curr_wifi = 0;
-	unsigned int next_wifi = 0;
-	unsigned int wifi_on = -1;
 
 	if ((next_status & (~(0x1 << CONNDRV_TYPE_BT))) == 0)
 		bt_only = true;
 
 	connsys_adie_clock_buffer_setting(bt_only);
-
-	curr_wifi = (curr_status & (0x1 << CONNDRV_TYPE_WIFI)) >> CONNDRV_TYPE_WIFI;
-	next_wifi = (next_status & (0x1 << CONNDRV_TYPE_WIFI)) >> CONNDRV_TYPE_WIFI;
-	wifi_on = (curr_wifi != next_wifi) ? next_wifi : -1;
 
 	if (curr_status == 0) {
 		/* 1st On */
@@ -1408,7 +1394,7 @@ int connsys_low_power_setting_mt6877(unsigned int curr_status, unsigned int next
 		 * CONN_INFRA_VDNR_GEN_ON_DEBUG_CTRL_AO_CONN_INFRA_VDNR_GEN_ON_U_DEBUG_CTRL_AO_CONN_INFRA_ON_CTRL0
 		 * 	0x1800_F000[9]=1'b1
 		 * CONN_INFRA_VDNR_GEN_ON_DEBUG_CTRL_AO_CONN_INFRA_VDNR_GEN_ON_U_DEBUG_CTRL_AO_CONN_INFRA_ON_CTRL0
-		 * 	0x1800_F000[31:16]=16'h7f4
+		 * 	0x1800_F000[31:16]=16'h8ef (2021/05/03 update, old value: 16'h7f4)
 		 * CONN_INFRA_VDNR_GEN_ON_DEBUG_CTRL_AO_CONN_INFRA_VDNR_GEN_ON_U_DEBUG_CTRL_AO_CONN_INFRA_ON_CTRL0
 		 * 	0x1800_F000[2]=1'b1
 		 * CONN_INFRA_VDNR_GEN_ON_DEBUG_CTRL_AO_CONN_INFRA_VDNR_GEN_ON_U_DEBUG_CTRL_AO_CONN_INFRA_ON_CTRL0
@@ -1418,10 +1404,10 @@ int connsys_low_power_setting_mt6877(unsigned int curr_status, unsigned int next
 		 * CONN_INFRA_VDNR_GEN_ON_DEBUG_CTRL_AO_CONN_INFRA_VDNR_GEN_ON_U_DEBUG_CTRL_AO_CONN_INFRA_ON_CTRL0
 		 * 	0x1800_F000[9]=1'b0
 		 */
-		addr = ioremap(0x1800f000, 0x10);
+		addr = ioremap_nocache(0x1800f000, 0x10);
 		if (addr) {
 			CONSYS_SET_BIT(addr, (0x1 << 9));
-			CONSYS_REG_WRITE_MASK(addr, 0x07f40000, 0xffff0000);
+			CONSYS_REG_WRITE_MASK(addr, 0x08ef0000, 0xffff0000);
 			CONSYS_SET_BIT(addr, (0x1 << 2));
 			CONSYS_SET_BIT(addr, (0x1 << 3));
 			CONSYS_SET_BIT(addr, (0x1 << 4));
@@ -1451,7 +1437,7 @@ int connsys_low_power_setting_mt6877(unsigned int curr_status, unsigned int next
 		 * CONN_INFRA_VDNR_AXI_LAYER_DEBUG_CTRL_AO_CONN_INFRA_VDNR_AXI_LAYER_U_DEBUG_CTRL_AO_CONN_INFRA_CTRL0
 		 * 	0x1801_D000[9]=1'b0
 		 */
-		addr = ioremap(0x1801d000, 0x10);
+		addr = ioremap_nocache(0x1801d000, 0x10);
 		if (addr) {
 			CONSYS_SET_BIT(addr, (0x1 << 9));
 			CONSYS_REG_WRITE_MASK(addr, 0x30e00000, 0xffff0000);
@@ -1541,6 +1527,11 @@ int connsys_low_power_setting_mt6877(unsigned int curr_status, unsigned int next
 		CONSYS_SET_BIT(CONN_CLKGEN_ON_TOP_CKGEN_BUS_ADDR, (0x1 << 26));
 		CONSYS_SET_BIT(CONN_CLKGEN_ON_TOP_CKGEN_BUS_ADDR, (0x1 << 27));
 
+		/* This will be used when readable check fail due to clock not detected.
+		 * Write 0x1800_1400[22:21]=2'b10
+		 */
+		CONSYS_REG_WRITE_HW_ENTRY(CONN_CFG_EMI_CTL_0_EMI_CTL_DEBUG_1_SEL, 0x2);
+
 		/* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
 		/* !!!!!!!!!!!!!!!!!!!!!! CANNOT add code after HERE!!!!!!!!!!!!!!!!!!!!!!!!!! */
 		/* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
@@ -1557,11 +1548,6 @@ int connsys_low_power_setting_mt6877(unsigned int curr_status, unsigned int next
 
 	} else {
 		/* Not first on */
-		if (wifi_on == 0) { // wifi turn off
-			// Debug use for vcn13 oc
-			pr_info("Debug use: wifi power off, dump a-die status\n");
-			pmic_mng_event_cb(0, 7);
-		}
 	}
 	/* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
 	/* !!!!!!!!!!!!!!!!!!!!!! CANNOT add code after HERE!!!!!!!!!!!!!!!!!!!!!!!!!! */
@@ -1586,15 +1572,11 @@ static int consys_sema_acquire(unsigned int index)
 int consys_sema_acquire_timeout_mt6877(unsigned int index, unsigned int usec)
 {
 	int i;
-	unsigned long flags = 0;
 
 	if (index >= CONN_SEMA_NUM_MAX)
 		return CONN_SEMA_GET_FAIL;
 	for (i = 0; i < usec; i++) {
 		if (consys_sema_acquire(index) == CONN_SEMA_GET_SUCCESS) {
-			sema_get_time[index] = jiffies;
-			if (index == CONN_SEMA_RFSPI_INDEX)
-				local_irq_save(flags);
 			return CONN_SEMA_GET_SUCCESS;
 		}
 		udelay(1);
@@ -1615,19 +1597,10 @@ int consys_sema_acquire_timeout_mt6877(unsigned int index, unsigned int usec)
 
 void consys_sema_release_mt6877(unsigned int index)
 {
-	u64 duration;
-	unsigned long flags = 0;
-
 	if (index >= CONN_SEMA_NUM_MAX)
 		return;
 	CONSYS_REG_WRITE(
 		(CONN_SEMAPHORE_CONN_SEMA00_M2_OWN_REL_ADDR + index*4), 0x1);
-
-	duration = jiffies_to_msecs(jiffies - sema_get_time[index]);
-	if (index == CONN_SEMA_RFSPI_INDEX)
-		local_irq_restore(flags);
-	if (duration > SEMA_HOLD_TIME_THRESHOLD)
-		pr_notice("%s hold semaphore (%d) for %llu ms\n", __func__, index, duration);
 }
 
 struct spi_op {
@@ -1733,7 +1706,6 @@ static int consys_spi_read_nolock(enum sys_spi_subsystem subsystem, unsigned int
 	CONSYS_REG_WRITE(CONN_REG_CONN_RF_SPI_MST_REG_ADDR + op->write_data_cr, 0);
 
 #ifndef CONFIG_FPGA_EARLY_PORTING
-	udelay(1);
 	check = 0;
 	CONSYS_REG_BIT_POLLING(
 		CONN_REG_CONN_RF_SPI_MST_REG_ADDR + op->busy_cr, op->polling_bit, 0, 100, 50, check);
@@ -1781,12 +1753,6 @@ static int consys_spi_write_nolock(enum sys_spi_subsystem subsystem, unsigned in
 	 * 4. Wait busy_cr[polling_bit] as 0
 	 */
 #ifndef CONFIG_FPGA_EARLY_PORTING
-	if (subsystem == SYS_SPI_TOP && addr == 0x380 && data == 0) {
-		pr_info("check who writes 0x380 to 0\n");
-		BUG_ON(1);
-		return CONNINFRA_SPI_OP_FAIL;
-	}
-
 	CONSYS_REG_BIT_POLLING(
 		CONN_REG_CONN_RF_SPI_MST_REG_ADDR + op->busy_cr,
 		op->polling_bit, 0, 100, 50, check);
@@ -1803,7 +1769,6 @@ static int consys_spi_write_nolock(enum sys_spi_subsystem subsystem, unsigned in
 	CONSYS_REG_WRITE(CONN_REG_CONN_RF_SPI_MST_REG_ADDR + op->write_data_cr, data);
 
 #ifndef CONFIG_FPGA_EARLY_PORTING
-	udelay(1);
 	check = 0;
 	CONSYS_REG_BIT_POLLING(CONN_REG_CONN_RF_SPI_MST_REG_ADDR + op->busy_cr, op->polling_bit, 0, 100, 50, check);
 	if (check != 0) {
@@ -1820,7 +1785,6 @@ static int consys_spi_write_nolock(enum sys_spi_subsystem subsystem, unsigned in
 int consys_spi_write_mt6877(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data)
 {
 	int ret = 0;
-
 	/* Get semaphore before read */
 	if (consys_sema_acquire_timeout_mt6877(CONN_SEMA_RFSPI_INDEX, CONN_SEMA_TIMEOUT) == CONN_SEMA_GET_FAIL) {
 		pr_err("[SPI WRITE] Require semaphore fail\n");
@@ -1830,40 +1794,6 @@ int consys_spi_write_mt6877(enum sys_spi_subsystem subsystem, unsigned int addr,
 	ret = consys_spi_write_nolock(subsystem, addr, data);
 
 	consys_sema_release_mt6877(CONN_SEMA_RFSPI_INDEX);
-	return ret;
-}
-
-int consys_spi_update_bits_mt6877(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask)
-{
-	int ret = 0;
-	unsigned int curr_val = 0;
-	unsigned int new_val = 0;
-	bool change = false;
-
-	/* Get semaphore before updating bits */
-	if (consys_sema_acquire_timeout_mt6877(CONN_SEMA_RFSPI_INDEX, CONN_SEMA_TIMEOUT) == CONN_SEMA_GET_FAIL) {
-		pr_err("[SPI WRITE] Require semaphore fail\n");
-		return CONNINFRA_SPI_OP_FAIL;
-	}
-
-	ret = consys_spi_read_nolock(subsystem, addr, &curr_val);
-
-	if (ret) {
-		consys_sema_release_mt6877(CONN_SEMA_RFSPI_INDEX);
-		pr_err("[%s][%s] Get 0x%08x error, ret=%d",
-			__func__, get_spi_sys_name(subsystem), addr, ret);
-		return CONNINFRA_SPI_OP_FAIL;
-	}
-
-	new_val = (curr_val & (~mask)) | (data & mask);
-	change = (curr_val != new_val);
-
-	if (change) {
-		ret = consys_spi_write_nolock(subsystem, addr, new_val);
-	}
-
-	consys_sema_release_mt6877(CONN_SEMA_RFSPI_INDEX);
-
 	return ret;
 }
 
@@ -1965,7 +1895,7 @@ bool consys_is_rc_mode_enable_mt6877(void)
 	 * 	[0] srclken_rc_en
 	 */
 	if (!ever_read) {
-		addr = ioremap(RC_CENTRAL_CFG1, 0x4);
+		addr = ioremap_nocache(RC_CENTRAL_CFG1, 0x4);
 		if (addr != NULL) {
 			ret = (bool)CONSYS_REG_READ_BIT(addr, 0x1);
 			iounmap(addr);

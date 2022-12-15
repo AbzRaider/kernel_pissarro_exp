@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2020 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #include <linux/memblock.h>
@@ -19,8 +20,6 @@
 static int consys_reg_init(struct platform_device *pdev);
 static int consys_reg_deinit(void);
 static int consys_check_reg_readable(void);
-static int __consys_check_reg_readable(void);
-static int consys_check_reg_readable_for_coredump(void);
 static int consys_is_consys_reg(unsigned int addr);
 static int consys_is_bus_hang(void);
 
@@ -30,7 +29,6 @@ struct consys_reg_mng_ops g_dev_consys_reg_ops_mt6877 = {
 	.consys_reg_mng_init = consys_reg_init,
 	.consys_reg_mng_deinit = consys_reg_deinit,
 	.consys_reg_mng_check_reable = consys_check_reg_readable,
-	.consys_reg_mng_check_reable_for_coredump = consys_check_reg_readable_for_coredump,
 	.consys_reg_mng_is_bus_hang = consys_is_bus_hang,
 	.consys_reg_mng_is_consys_reg = consys_is_consys_reg,
 
@@ -57,6 +55,9 @@ static const char* consys_base_addr_index_to_str[CONSYS_BASE_ADDR_MAX] = {
 	"conn_bcrm_on",
 };
 
+// Debug dump for conninfra readable fail
+static unsigned long debug_remap_array[6];
+
 struct consys_base_addr* get_conn_reg_base_addr()
 {
 	return &conn_reg;
@@ -81,7 +82,7 @@ static void consys_bus_hang_dump_a_rc(void)
 	char tmp_buf[LOG_TMP_BUF_SZ] = {'\0'};
 	void __iomem *addr = NULL;
 
-	addr = ioremap(0x1000F900, 0x100);
+	addr = ioremap_nocache(0x1000F900, 0x100);
 	if (!addr) {
 		pr_info("[%s] remap 0x1000F100 fail", __func__);
 		return;
@@ -131,7 +132,7 @@ static void consys_bus_hang_dump_a(void)
 	a11 = CONSYS_REG_READ(CONN_REG_SPM_ADDR + 0x928);
 	a12 = CONSYS_REG_READ(CONN_REG_SPM_ADDR + 0x938);
 
-	addr = ioremap(0x10000180, 0x20);
+	addr = ioremap_nocache(0x10000180, 0x20);
 	if (addr != NULL) {
 		a8 = CONSYS_REG_READ(addr);
 		iounmap(addr);
@@ -146,7 +147,7 @@ static void consys_bus_hang_dump_a(void)
 	 * A3	Read	0x1000F930
 	 * A4	Read	0x1000F934
 	 */
-	addr = ioremap(0x1000F900, 0x40);
+	addr = ioremap_nocache(0x1000F900, 0x40);
 	if (addr != NULL) {
 		a1 = CONSYS_REG_READ(addr + 0x28);
 		a2 = CONSYS_REG_READ(addr + 0x2c);
@@ -185,7 +186,7 @@ static inline unsigned int __consys_bus_hang_clock_detect(void)
 
 	while (count < 4) {
 		CONSYS_SET_BIT(CONN_HOST_CSR_TOP_BUS_MCU_STAT_ADDR, (0x1 << 0));
-		udelay(20);
+		udelay(1);
 		r = CONSYS_REG_READ_BIT(CONN_HOST_CSR_TOP_BUS_MCU_STAT_ADDR, ((0x1 << 2) | (0x1 << 1)));
 		if (r == 0x6)
 			break;
@@ -333,12 +334,11 @@ static void consys_bus_hang_dump_c(bool offclock)
 	timeout7 = CONSYS_REG_READ(CONN_HOST_CSR_TOP_CONN_INFRA_BUS_TIMEOUT_LOG_ADDR);
 	pr_info("[CONN_BUS_C]ahb_apb_timeout:[0x%08x][0x%08x][0x%08x][0x%08x][0x%08x][0x%08x][0x%08x]",
 		timeout1, timeout2, timeout3, timeout4, timeout5, timeout6, timeout7);
-
 	/* debug_ctrl_setting - table 1
 	 * 	0x1800_F408, 0x1800_F40C, 0x1800_F410, 0x1800_F414, 0x1800_F418, 0x1800_F41C
 	 * 	0x1800_F420, 0x1800_F424, 0x1800_F428, 0x1800_F42C, 0x1800_F430
 	 */
-	addr = ioremap(0x1800f400, 0x40);
+	addr = ioremap_nocache(0x1800f400, 0x40);
 	if (addr) {
 		memset(tmp_buf, '\0', LOG_TMP_BUF_SZ);
 		for (i = 0x8; i <= 0x30; i += 4) {
@@ -351,7 +351,6 @@ static void consys_bus_hang_dump_c(bool offclock)
 	} else {
 		pr_info("[CONN_BUS_C]debug_ctrl_setting-1: allocate fail");
 	}
-
 	/* debug_ctrl_setting - table 2
 	 * WRITE	0x18060138	0x0001_0001	READ	0x1806_0150
 	 * WRITE	0x18060138	0x0002_0001	READ	0x1806_0150
@@ -384,7 +383,7 @@ static void consys_bus_hang_dump_c(bool offclock)
 	 * 	WRITE	0x18060440	0x0002_0001	READ	0x1806_0458
 	 * 	WRITE	0x18060440	0x0003_0001	READ	0x1806_0458
 	 */
-	addr = ioremap(0x1801d400, 0x20);
+	addr = ioremap_nocache(0x1801d400, 0x20);
 	if (addr) {
 		axi1 = CONSYS_REG_READ(addr + 0x08);
 		axi2 = CONSYS_REG_READ(addr + 0x0c);
@@ -540,9 +539,57 @@ static int consys_is_bus_hang(void)
 	return ret;
 }
 
-int __consys_check_reg_readable(void)
+static unsigned long __remap_phy_addr(unsigned int phy_addr)
 {
+	void __iomem *addr = 0;
+	addr = ioremap_nocache(phy_addr, 0x10);
+
+	if (addr) {
+		return (unsigned long)addr;
+	}
+
+	return 0;
+}
+
+static unsigned int __get_phy_value(unsigned long vir_addr)
+{
+	unsigned int ret;
+
+	if (vir_addr != 0) {
+		ret = CONSYS_REG_READ(vir_addr);
+	} else {
+		ret = 0xdeaddead;
+	}
+
+	return ret;
+}
+
+int consys_check_reg_readable(void)
+{
+
 	unsigned int r, r1, r2;
+	char tmp_buf[LOG_TMP_BUF_SZ] = {'\0'};
+
+	/* 2.a CONN_PWR_CON(0x1000_6E04)
+	 * 2.b CKSYS
+	 * - 0x1000_C350: mail pll clock
+	 * - 0x1000_C35C: mail pll clock
+	 * - 0x1000_0010: host_ck sel mux/sw cg to Connsys
+	 * - 0x1000_0180: host_ck sel mux/sw cg to Connsys
+	 * 2.c decorder wayen
+	 * - 0x1021_50e0[22]: should be 1
+	 * - 0x1027_208c[9]: should be 1
+	 */
+	memset(tmp_buf, '\0', LOG_TMP_BUF_SZ);
+	snprintf(
+		tmp_buf, LOG_TMP_BUF_SZ, "[0x%08x][0x%08x][0x%08x][0x%08x][0x%08x][0x%08x][0x%08x]",
+		CONSYS_REG_READ(SPM_CONN_PWR_CON),
+		__get_phy_value(debug_remap_array[0]),
+		__get_phy_value(debug_remap_array[1]),
+		__get_phy_value(debug_remap_array[2]),
+		__get_phy_value(debug_remap_array[3]),
+		__get_phy_value(debug_remap_array[4]),
+		__get_phy_value(debug_remap_array[5]));
 
 	/* AP2CONN_INFRA ON
 	 * 1. Check ap2conn gals sleep protect status
@@ -553,7 +600,7 @@ int __consys_check_reg_readable(void)
 	r1 = CONSYS_REG_READ_BIT(INFRACFG_AO_INFRA_TOPAXI_PROTECTEN_STA1, (0x1 << 19));
 	r2 = CONSYS_REG_READ_BIT(INFRACFG_AO_INFRA_TOPAXI_PROTECTEN_STA1, (0x1 << 13));
 	if (r1 || r2) {
-		pr_info("[%s] AP2CONN_INFRA ON fail: rx=0x%x tx=0x%x", __func__, r1, r2);
+		pr_info("[%s] rx=0x%x tx=0x%x dump=%s", __func__, r1, r2, tmp_buf);
 		return 0;
 	}
 
@@ -570,47 +617,35 @@ int __consys_check_reg_readable(void)
 	 */
 	r = __consys_bus_hang_clock_detect();
 	if (r != 0x6) {
-		pr_info("[%s] Clock detect fail, r=[0x%x]", __func__, r);
+		pr_info("[%s] clock detect=0x%x dump=%s", __func__, r, tmp_buf);
+		consys_bus_hang_dump_a();
+		consys_bus_hang_dump_b();
+		/*
+		 * Write 0x1806_015C[2:0]=3'b111
+		 * Read  0x1806_02C8
+		 */
+		CONSYS_REG_WRITE_HW_ENTRY(
+			CONN_HOST_CSR_TOP_CONN_INFRA_CFG_DBG_SEL_CONN_INFRA_CFG_DBG_SEL, 0x7);
+		pr_info("[%s] 0x1806_02C8=0x%08x", __func__,
+			CONSYS_REG_READ(CONN_HOST_CSR_TOP_DBG_DUMMY_2_ADDR));
 		return 0;
 	}
 	r = CONSYS_REG_READ(CONN_CFG_IP_VERSION_ADDR);
 	if (r != CONN_HW_VER) {
-		pr_info("[%s] Check ip version fail, r=[0x%x]", __func__, r);
+		pr_info("[%s] ip version=0x%x dump=%s", __func__, r, tmp_buf);
 		return 0;
 	}
-
-	return 1;
-}
-
-int consys_check_reg_readable(void)
-{
-	unsigned int r;
-
-	if (__consys_check_reg_readable() == 0)
-		return 0;
-
 	r = CONSYS_REG_READ_BIT(CONN_HOST_CSR_TOP_DBG_DUMMY_5_ADDR, (0x1 << 0));
 	if (r != 0x1) {
-		pr_info("[%s] conn_infra off domain bus timeout irq, r=[0x%x]", __func__, r);
+		pr_info("[%s] irq=[0x%08x] [0x%08x][0x%08x][0x%08x] dump=%s",
+			__func__, r,
+			CONSYS_REG_READ(CONN_HOST_CSR_TOP_CONN_INFRA_ON_BUS_TIMEOUT_IRQ_ADDR),
+			CONSYS_REG_READ(CONN_HOST_CSR_TOP_CONN_INFRA_AXI_LAYER_DEBUG_CTRL_AO_TIMEOUT_IRQ),
+			CONSYS_REG_READ(CONN_HOST_CSR_TOP_CONN_INFRA_BUS_TIMEOUT_IRQ_B_ADDR),
+			tmp_buf);
 		return 0;
 	}
-
-	return 1;
-}
-
-int consys_check_reg_readable_for_coredump(void)
-{
-	unsigned int r;
-
-	if (__consys_check_reg_readable() == 0)
-		return 0;
-
-	r = CONSYS_REG_READ_BIT(CONN_HOST_CSR_TOP_DBG_DUMMY_5_ADDR, (0x1 << 0));
-	if (r != 0x1) {
-		pr_info("[%s] conn_infra off domain bus timeout irq, r=[0x%x]\n", __func__, r);
-		return 1; // can ignore bus timeout irq status for coredump
-	}
-
+	pr_info("[%s] dump=%s", __func__, tmp_buf);
 	return 1;
 }
 
@@ -649,13 +684,22 @@ int consys_reg_init(struct platform_device *pdev)
 		pr_err("[%s] can't find CONSYS compatible node\n", __func__);
 		return ret;
 	}
-	return 0;
 
+	// Debug dump for conninfra readable fail
+	debug_remap_array[0] = __remap_phy_addr(0x1000C350);
+	debug_remap_array[1] = __remap_phy_addr(0x1000C35C);
+	debug_remap_array[2] = __remap_phy_addr(0x10000010);
+	debug_remap_array[3] = __remap_phy_addr(0x10000180);
+	debug_remap_array[4] = __remap_phy_addr(0x102150e0);
+	debug_remap_array[5] = __remap_phy_addr(0x1027208c);
+
+	return 0;
 }
 
 static int consys_reg_deinit(void)
 {
 	int i = 0;
+	int j = 0;
 
 	for (i = 0; i < CONSYS_BASE_ADDR_MAX; i++) {
 		if (conn_reg.reg_base_addr[i].vir_addr) {
@@ -664,6 +708,13 @@ static int consys_reg_deinit(void)
 				conn_reg.reg_base_addr[i].vir_addr);
 			iounmap((void __iomem*)conn_reg.reg_base_addr[i].vir_addr);
 			conn_reg.reg_base_addr[i].vir_addr = 0;
+		}
+	}
+
+	// Debug dump for conninfra readable fail
+	for (j = 0; j < 6; j++) {
+		if (debug_remap_array[j] != 0) {
+			iounmap((void __iomem*)debug_remap_array[j]);
 		}
 	}
 

@@ -25,9 +25,7 @@
 #include "mt6877_pos.h"
 #include "mt6877_consys_reg.h"
 #include "mt6877_consys_reg_offset.h"
-#include "mt6877_connsyslog.h"
-#include "clock_mng.h"
-#include "coredump_mng.h"
+#include "conn_host_csr_top.h"
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -68,12 +66,10 @@ static int consys_thermal_query_mt6877(void);
 /* Power state relative */
 static int consys_enable_power_dump_mt6877(void);
 static int consys_reset_power_state_mt6877(void);
-static int consys_power_state_dump_mt6877(char *buf, unsigned int size);
+static int consys_power_state_dump_mt6877(void);
 
 static unsigned long long consys_soc_timestamp_get_mt6877(void);
 
-static unsigned int consys_adie_detection_mt6877(void);
-static void consys_set_mcu_control_mt6877(int type, bool onoff);
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -110,7 +106,6 @@ struct consys_hw_ops_struct g_consys_hw_ops_mt6877 = {
 
 	.consys_plt_spi_read = consys_spi_read_mt6877,
 	.consys_plt_spi_write = consys_spi_write_mt6877,
-	.consys_plt_spi_update_bits = consys_spi_update_bits_mt6877,
 	.consys_plt_spi_clock_switch = consys_spi_clock_switch_mt6877,
 	.consys_plt_subsys_status_update = consys_subsys_status_update_mt6877,
 
@@ -119,15 +114,12 @@ struct consys_hw_ops_struct g_consys_hw_ops_mt6877 = {
 	.consys_plt_reset_power_state = consys_reset_power_state_mt6877,
 	.consys_plt_power_state = consys_power_state_dump_mt6877,
 	.consys_plt_soc_timestamp_get = consys_soc_timestamp_get_mt6877,
-	.consys_plt_adie_detection = consys_adie_detection_mt6877,
-	.consys_plt_set_mcu_control = consys_set_mcu_control_mt6877,
 };
 
 extern struct consys_hw_ops_struct g_consys_hw_ops_mt6877;
 extern struct consys_reg_mng_ops g_dev_consys_reg_ops_mt6877;
 extern struct consys_platform_emi_ops g_consys_platform_emi_ops_mt6877;
 extern struct consys_platform_pmic_ops g_consys_platform_pmic_ops_mt6877;
-extern struct consys_platform_coredump_ops g_consys_platform_coredump_ops_mt6877;
 
 const struct conninfra_plat_data mt6877_plat_data = {
 	.chip_id = PLATFORM_SOC_CHIP,
@@ -136,8 +128,6 @@ const struct conninfra_plat_data mt6877_plat_data = {
 	.reg_ops = &g_dev_consys_reg_ops_mt6877,
 	.platform_emi_ops = &g_consys_platform_emi_ops_mt6877,
 	.platform_pmic_ops = &g_consys_platform_pmic_ops_mt6877,
-	.platform_coredump_ops = &g_consys_platform_coredump_ops_mt6877,
-	.connsyslog_config = &g_connsyslog_config,
 };
 
 static struct clk *clk_scp_conn_main;	/*ctrl conn_power_on/off */
@@ -197,12 +187,10 @@ int consys_clock_buffer_ctrl_mt6877(unsigned int enable)
 	 * clock buffer is HW controlled, not SW controlled.
 	 * Keep this function call to update status.
 	 */
-#if (!COMMON_KERNEL_CLK_SUPPORT)
 	if (enable)
 		KERNEL_clk_buf_ctrl(CLK_BUF_CONN, true);	/*open XO_WCN*/
 	else
 		KERNEL_clk_buf_ctrl(CLK_BUF_CONN, false);	/*close XO_WCN*/
-#endif
 	return 0;
 }
 
@@ -213,9 +201,7 @@ unsigned int consys_soc_chipid_get_mt6877(void)
 
 void consys_clock_fail_dump_mt6877(void)
 {
-#if defined(KERNEL_clk_buf_show_status_info)
 	KERNEL_clk_buf_show_status_info();
-#endif
 }
 
 int consys_enable_power_dump_mt6877(void)
@@ -320,7 +306,7 @@ void consys_power_state(void)
 
 }
 
-int consys_power_state_dump_mt6877(char *buf, unsigned int size)
+int consys_power_state_dump_mt6877(void)
 {
 	unsigned int conninfra_sleep_cnt, conninfra_sleep_time;
 	unsigned int wf_sleep_cnt, wf_sleep_time;
@@ -441,7 +427,7 @@ int consys_thermal_query_mt6877(void)
 	unsigned int i;
 	unsigned int efuse0, efuse1, efuse2, efuse3;
 
-	addr = ioremap(CONN_GPT2_CTRL_BASE, 0x100);
+	addr = ioremap_nocache(CONN_GPT2_CTRL_BASE, 0x100);
 	if (addr == NULL) {
 		pr_err("GPT2_CTRL_BASE remap fail");
 		return -1;
@@ -504,7 +490,7 @@ static unsigned long long consys_soc_timestamp_get_mt6877(void)
 {
 #define TICK_PER_MS	(13000)
 	void __iomem *addr = NULL;
-	u32 tick_h = 0, tick_l = 0, tmp_h = 0;
+	u32 tick_h = 0, tick_l = 0;
 	u64 timestamp = 0;
 
 	/* 0x1001_7000	sys_timer@13M
@@ -513,11 +499,8 @@ static unsigned long long consys_soc_timestamp_get_mt6877(void)
 	 */
 	addr = ioremap(0x10017000, 0x10);
 	if (addr) {
-		do {
-			tick_h = CONSYS_REG_READ(addr + 0x000c);
-			tick_l = CONSYS_REG_READ(addr + 0x0008);
-			tmp_h = CONSYS_REG_READ(addr + 0x000c);
-		} while (tick_h != tmp_h);
+		tick_l = CONSYS_REG_READ(addr + 0x0008);
+		tick_h = CONSYS_REG_READ(addr + 0x000c);
 		iounmap(addr);
 	} else {
 		pr_info("[%s] remap fail", __func__);
@@ -528,19 +511,4 @@ static unsigned long long consys_soc_timestamp_get_mt6877(void)
 	do_div(timestamp, TICK_PER_MS);
 
 	return timestamp;
-}
-
-static unsigned int consys_adie_detection_mt6877(void)
-{
-	return 0x6635;
-}
-
-static void consys_set_mcu_control_mt6877(int type, bool onoff)
-{
-	pr_info("[%s] Set mcu control type=[%d] onoff=[%d]\n", __func__, type, onoff);
-
-	if (onoff) // Turn on
-		CONSYS_SET_BIT(CONN_INFRA_SYSRAM_SW_CR_MCU_LOG_CONTROL, (0x1 << type));
-	else // Turn off
-		CONSYS_CLR_BIT(CONN_INFRA_SYSRAM_SW_CR_MCU_LOG_CONTROL, (0x1 << type));
 }
