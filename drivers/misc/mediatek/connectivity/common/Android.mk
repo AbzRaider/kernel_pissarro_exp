@@ -3,9 +3,6 @@ LOCAL_PATH := $(call my-dir)
 ifneq ($(filter yes,$(sort $(MTK_WLAN_SUPPORT) $(MTK_BT_SUPPORT) $(MTK_GPS_SUPPORT) $(MTK_FM_SUPPORT))),)
 WLAN_MT76XX_CHIPS := MT7668 MT7663
 
-ifeq ($(filter $(WLAN_MT76XX_CHIPS), $(MTK_COMBO_CHIP)),)
-ifneq (true,$(strip $(TARGET_NO_KERNEL)))
-ifneq ($(filter yes,$(MTK_COMBO_SUPPORT)),)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := wmt_drv.ko
