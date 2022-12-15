@@ -3,8 +3,8 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
-#ifndef _MTK_MT6853_H_
-#define _MTK_MT6853_H_
+#ifndef _MTK_MT6833_H_
+#define _MTK_MT6833_H_
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -16,7 +16,7 @@
 #define CONSYS_PWR_ON_OFF_API_AVAILABLE	1
 #define CONSYS_RC_MODE_ENABLE		1
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #define COMMON_KERNEL_EMI_MPU_SUPPORT	1
 #define COMMON_KERNEL_PMIC_SUPPORT	1
 #else
@@ -24,7 +24,7 @@
 #define COMMON_KERNEL_PMIC_SUPPORT	0
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #define COMMON_KERNEL_CLK_SUPPORT	1
 #else
 #define COMMON_KERNEL_CLK_SUPPORT	0
@@ -42,30 +42,30 @@
 */
 
 /*tag start:new platform need to make sure these define */
-#define PLATFORM_SOC_CHIP 0x6853
+#define PLATFORM_SOC_CHIP 0x6833
 /*tag end*/
 
 /*device tree mode*/
 /* A-Die interface pinmux base */
 #define CONSYS_IF_PINMUX_REG_BASE	0x10005000
 #define CONSYS_IF_PINMUX_01_OFFSET	0x00000480
-#define CONSYS_IF_PINMUX_01_MASK	0x00000000
+#define CONSYS_IF_PINMUX_01_MASK	0x88888888
 #define CONSYS_IF_PINMUX_01_VALUE	0x11111111
 #define CONSYS_IF_PINMUX_02_OFFSET	0x00000490
-#define CONSYS_IF_PINMUX_02_MASK	0xFFFFF000
-#define CONSYS_IF_PINMUX_02_VALUE	0x00000111
-#define CONSYS_CLOCK_TCXO_MODE_OFFSET	0x410
-#define CONSYS_CLOCK_TCXO_MODE_MASK	0xFFFFFF8F
-#define CONSYS_CLOCK_TCXO_MODE_VALUE	0x50
+#define CONSYS_IF_PINMUX_02_MASK	0xFFFFFFF8
+#define CONSYS_IF_PINMUX_02_VALUE	0x00000001
+#define CONSYS_CLOCK_TCXO_MODE_OFFSET	0x3B0
+#define CONSYS_CLOCK_TCXO_MODE_MASK	0xFFFFFFF8
+#define CONSYS_CLOCK_TCXO_MODE_VALUE	0x2
 
 /* A-Die interface pinmux driving base */
 #define CONSYS_IF_PINMUX_DRIVING_BASE	0x11EA0000
 #define CONSYS_IF_PINMUX_DRIVING_OFFSET_1	0x0
-#define CONSYS_IF_PINMUX_DRIVING_MASK_1		0xC003FFFF
-#define CONSYS_IF_PINMUX_DRIVING_VALUE_1	0x8240000
+#define CONSYS_IF_PINMUX_DRIVING_MASK_1		0xC0007FFF
+#define CONSYS_IF_PINMUX_DRIVING_VALUE_1	0x9048000
 #define CONSYS_IF_PINMUX_DRIVING_OFFSET_2	0x10
-#define CONSYS_IF_PINMUX_DRIVING_MASK_2		0xFFE00000
-#define CONSYS_IF_PINMUX_DRIVING_VALUE_2	0x1
+#define CONSYS_IF_PINMUX_DRIVING_MASK_2		0xFFFFF000
+#define CONSYS_IF_PINMUX_DRIVING_VALUE_2	0x0
 
 /* CONN_WF_CTRL2 */
 #define CONSYS_WF_CTRL2_01_OFFSET	0x60
@@ -101,7 +101,7 @@
 #define EMI_CONTROL_DBG_PROBE		0x00000144
 #define CONN_MCU_EMI_CONTROL		0x00000150
 
-#define CONSYS_IP_VER_ID		0x10090000
+#define CONSYS_IP_VER_ID		0x100a0000
 
 /*CONN_HIF_ON_BASE*/
 #define CONSYS_CLOCK_CHECK_VALUE        0x30000
@@ -120,22 +120,6 @@
 #define CONSYS_AHB_TX_PROT_MASK		(0x1<<13)	/* bit 13 */
 #define CONSYS_AHB_TIMEOUT_EN_ADDRESS	0x18002440
 #define CONSYS_AHB_TIMEOUT_EN_VALUE	0x90000002
-
-#define CONSYS_AFE_WBG_REG_BASE			(0x180B3000)
-#define CONSYS_AFE_WBG_REG_AFE_01_OFFSET	(0x10)
-#define CONSYS_AFE_WBG_REG_RCK_01_OFFSET	(0x18)
-#define CONSYS_AFE_WBG_REG_GL1_01_OFFSET	(0x40)
-#define CONSYS_AFE_WBG_REG_BT_TX_03_OFFSET	(0x58)
-#define CONSYS_AFE_WBG_REG_WF0_TX_03_OFFSET	(0x78)
-#define CONSYS_AFE_WBG_REG_WF1_TX_03_OFFSET	(0x94)
-#define CONSYS_AFE_WBG_REG_GL5_01_OFFSET	(0x100)
-#define CONSYS_AFE_WBG_REG_AFE_01_VALUE		(0x00000000)
-#define CONSYS_AFE_WBG_REG_RCK_01_VALUE		(0x144B0160)
-#define CONSYS_AFE_WBG_REG_GL1_01_VALUE		(0x10990C13)
-#define CONSYS_AFE_WBG_REG_BT_TX_03_VALUE	(0xCD258051)
-#define CONSYS_AFE_WBG_REG_WF0_TX_03_VALUE	(0xC5258251)
-#define CONSYS_AFE_WBG_REG_WF1_TX_03_VALUE	(0xC5258251)
-#define CONSYS_AFE_WBG_REG_GL5_01_VALUE		(0x10990C13)
 
 #define CONSYS_COCLOCK_STABLE_TIME_BASE         (0x180C1200)
 #define CONSYS_COCLOCK_ACK_ENABLE_OFFSET        (0x4)
@@ -156,7 +140,7 @@
 #define CONSYS_COCLOCK_RC_CTL_1_TOP_XO_OFFSET	(0x5C)
 #define CONSYS_COCLOCK_RC_CTL_0_TOP_ACK_OFFSET	(0x60)
 #define CONSYS_COCLOCK_RC_CTL_1_XO_VALUE	(0x02080706)
-#define CONSYS_COCLOCK_RC_CTL_1_XO_TCXO_VALUE	(0x02434241)
+#define CONSYS_COCLOCK_RC_CTL_1_XO_TCXO_VALUE	(0x024B4A49)
 #define CONSYS_COCLOCK_RC_CTL_0_ACK_BIT		(0x1 << 16)
 #define CONSYS_COCLOCK_RC_CTL_0_GPS_OSC_RC_EN_BIT	(0x1 << 4 | 0x1 << 12)
 #define CONSYS_COCLOCK_RC_CTL_0_BT_OSC_RC_EN_BIT	(0x1 << 5 | 0x1 << 13)
@@ -210,23 +194,23 @@
 #define CONSYS_AP2CONN_WAKEUP_BIT	(0x1 << 9)
 
 /* EMI part mapping & ctrl*/
-#define CONSYS_EMI_COREDUMP_OFFSET	(0x68000)
-#define CONSYS_EMI_COREDUMP_MEM_SIZE	(0xa0000)
+#define CONSYS_EMI_COREDUMP_OFFSET	(0x88000)
+#define CONSYS_EMI_COREDUMP_MEM_SIZE	(0xc8000)
 #define CONSYS_EMI_AP_PHY_OFFSET	(0x00000)
-#define CONSYS_EMI_AP_PHY_BASE		(0x80068000)
-#define CONSYS_EMI_FW_PHY_BASE		(0xf0068000)
+#define CONSYS_EMI_AP_PHY_BASE		(0x80088000)
+#define CONSYS_EMI_FW_PHY_BASE		(0xf0088000)
 #define CONSYS_EMI_PAGED_TRACE_OFFSET	(0x400)
 #define CONSYS_EMI_PAGED_DUMP_OFFSET	(0x8400)
 #define CONSYS_EMI_FULL_DUMP_OFFSET	(0x10400)
-#define CONSYS_EMI_MET_DATA_OFFSET	(0x2e500)
+#define CONSYS_EMI_MET_DATA_OFFSET	(0x50000)
 
-#define CONSYS_EMI_RAM_BT_BUILDTIME_OFFSET	(0x68300)
-#define CONSYS_EMI_RAM_WIFI_BUILDTIME_OFFSET	(0x68310)
-#define CONSYS_EMI_RAM_MCU_BUILDTIME_OFFSET	(0x68320)
-#define CONSYS_EMI_PATCH_MCU_BUILDTIME_OFFSET	(0x68330)
+#define CONSYS_EMI_RAM_BT_BUILDTIME_OFFSET	(0x300)
+#define CONSYS_EMI_RAM_WIFI_BUILDTIME_OFFSET	(0x310)
+#define CONSYS_EMI_RAM_MCU_BUILDTIME_OFFSET	(0x320)
+#define CONSYS_EMI_PATCH_MCU_BUILDTIME_OFFSET	(0x330)
 
-#define CONSYS_EMI_BT_ENTRY_ADDRESS	(0xF0110000)
-#define CONSYS_EMI_WIFI_ENTRY_ADDRESS	(0xF01D0000)
+#define CONSYS_EMI_BT_ENTRY_ADDRESS	(0xF0170000)
+#define CONSYS_EMI_WIFI_ENTRY_ADDRESS	(0xF02A0000)
 
 /* AP_PCCIF4_BASE Register */
 #define INFRASYS_COMMON_AP2MD_PCCIF4_AP_PERI_AP_CCU_CONFIG (0x314)
@@ -297,6 +281,7 @@
 /**********************************************************************/
 /* Base: conn_mcu_cfg_on_base (0x180a_3000) */
 /**********************************************************************/
+
 /**********************************************************************/
 /* PMIC mt6359P define for Quark project only*/
 /**********************************************************************/
@@ -416,48 +401,48 @@ extern struct bt_wifi_v33_status gBtWifiV33;
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-extern INT32 dump_conn_mcu_pc_log_mt6853(const char *trg_str);
-extern INT32 dump_conn_debug_dump_mt6853(const char *);
-extern INT32 dump_conn_mcu_debug_flag_mt6853(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer1_mt6853(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer2_mt6853(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer3_mt6853(const char *);
-extern INT32 dump_conn_mcu_ahb_bus_hang_layer4_mt6853(const char *);
-extern INT32 dump_conn_mcu_ahb_timeout_info_mt6853(const char *);
-extern INT32 dump_conn_bus_hang_debug_mt6853(const char *);
-extern INT32 dump_conn_mcu_apb_timeout_info_mt6853(const char *);
-extern INT32 dump_conn_apb_bus0_hang_mt6853(const char *);
-extern INT32 dump_conn_apb_bus1_hang_mt6853(const char *);
-extern INT32 dump_conn_apb_bus2_hang_mt6853(const char *);
-extern INT32 dump_conn_emi_ctrl_host_csr_mt6853(const char *);
-extern INT32 dump_conn_mcu_confg_emi_ctrl_mt6853(const char *);
-extern INT32 dump_conn_mcu_cpu_probe_mt6853(const char *);
-extern INT32 dump_conn_mcu_ahb_probe_mt6853(const char *);
-extern INT32 dump_conn_mcu_idlm_prot_prob_mt6853(const char *);
-extern INT32 dump_conn_mcu_wf_cmdbt_ram_prob_mt6853(const char *);
-extern INT32 dump_conn_mcu_pda_dbg_flag_mt6853(const char *);
-extern INT32 dump_conn_mcu_sysram_prb_mt6853(const char *);
-extern INT32 dump_conn_mcu_confg_mt6853(const char *);
-extern INT32 dump_conn_mcu_i_eidlm_mt6853(const char *);
-extern INT32 dump_conn_mcu_dma_mt6853(const char *);
-extern INT32 dump_conn_mcu_tcm_prob_mt6853(const char *);
-extern INT32 dump_conn_mcu_met_prob_mt6853(const char *);
-extern INT32 dump_conn_mcusys_n9_mt6853(const char *);
-extern INT32 dump_conn_mcu_uart_dbg_loop_mt6853(const char *);
-extern INT32 dump_conn_cfg_on_Debug_Signal_mt6853(const char *);
-extern INT32 dump_conn_cfg_on_register_mt6853(const char *);
-extern INT32 dump_conn_cmdbt_debug_signal_mt6853(const char *);
-extern INT32 dump_conn_cmdbt_register_mt6853(const char *);
-extern INT32 dump_conn_emi_detect_mt6853(const char *);
-extern INT32 dump_conn_cmdbt_debug_mt6853(const char *);
-extern INT32 dump_conn_hif_reg_debug_mt6853(const char *);
-extern INT32 dump_conn_mcu_confg_bus_hang_reg_mt6853(const char *);
-extern INT32 dump_wf_pdma_reg_debug_mt6853(const char *);
-extern INT32 dump_conn_to_EMI_bus_path_mt6853(const char *trg_str);
 
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************
 */
+extern INT32 dump_conn_mcu_pc_log_mt6833(const char *trg_str);
+extern INT32 dump_conn_debug_dump_mt6833(const char *);
+extern INT32 dump_conn_mcu_debug_flag_mt6833(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer1_mt6833(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer2_mt6833(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer3_mt6833(const char *);
+extern INT32 dump_conn_mcu_ahb_bus_hang_layer4_mt6833(const char *);
+extern INT32 dump_conn_mcu_ahb_timeout_info_mt6833(const char *);
+extern INT32 dump_conn_bus_hang_debug_mt6833(const char *);
+extern INT32 dump_conn_mcu_apb_timeout_info_mt6833(const char *);
+extern INT32 dump_conn_apb_bus0_hang_mt6833(const char *);
+extern INT32 dump_conn_apb_bus1_hang_mt6833(const char *);
+extern INT32 dump_conn_apb_bus2_hang_mt6833(const char *);
+extern INT32 dump_conn_emi_ctrl_host_csr_mt6833(const char *);
+extern INT32 dump_conn_mcu_confg_emi_ctrl_mt6833(const char *);
+extern INT32 dump_conn_mcu_cpu_probe_mt6833(const char *);
+extern INT32 dump_conn_mcu_ahb_probe_mt6833(const char *);
+extern INT32 dump_conn_mcu_idlm_prot_prob_mt6833(const char *);
+extern INT32 dump_conn_mcu_wf_cmdbt_ram_prob_mt6833(const char *);
+extern INT32 dump_conn_mcu_pda_dbg_flag_mt6833(const char *);
+extern INT32 dump_conn_mcu_sysram_prb_mt6833(const char *);
+extern INT32 dump_conn_mcu_confg_mt6833(const char *);
+extern INT32 dump_conn_mcu_i_eidlm_mt6833(const char *);
+extern INT32 dump_conn_mcu_dma_mt6833(const char *);
+extern INT32 dump_conn_mcu_tcm_prob_mt6833(const char *);
+extern INT32 dump_conn_mcu_met_prob_mt6833(const char *);
+extern INT32 dump_conn_mcusys_n9_mt6833(const char *);
+extern INT32 dump_conn_mcu_uart_dbg_loop_mt6833(const char *);
+extern INT32 dump_conn_cfg_on_Debug_Signal_mt6833(const char *);
+extern INT32 dump_conn_cfg_on_register_mt6833(const char *);
+extern INT32 dump_conn_cmdbt_debug_signal_mt6833(const char *);
+extern INT32 dump_conn_cmdbt_register_mt6833(const char *);
+extern INT32 dump_conn_emi_detect_mt6833(const char *);
+extern INT32 dump_conn_cmdbt_debug_mt6833(const char *);
+extern INT32 dump_conn_hif_reg_debug_mt6833(const char *);
+extern INT32 dump_conn_mcu_confg_bus_hang_reg_mt6833(const char *);
+extern INT32 dump_wf_pdma_reg_debug_mt6833(const char *);
+extern INT32 dump_conn_to_EMI_bus_path_mt6833(const char *trg_str);
 
-#endif /* _MTK_MT6853_H_ */
+#endif /* _MTK_MT6833_H_ */

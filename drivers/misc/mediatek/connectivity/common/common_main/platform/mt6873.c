@@ -18,19 +18,10 @@
 #endif
 #define DFT_TAG "[WMT-CONSYS-HW]"
 
-#define CONSYS_ENABLE_EMI_MPU 1
 #define	REGION_CONN	27
 
 #define	DOMAIN_AP	0
 #define	DOMAIN_CONN	2
-
-#define	PRIMARY_ADIE	0x6631
-#define	SECONDARY_ADIE	0x6635
-
-/* if clock of TCXO is controlled by GPIO, CLK_CTRL_TCXOENA_REQ should be 1. */
-#define CLK_CTRL_TCXOENA_REQ 0
-
-#define VCN33_1_VOL  3500000
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -46,7 +37,7 @@
 #include "fw_log_wmt.h"
 #endif
 #include "osal_typedef.h"
-#include "mt6853.h"
+#include "mt6873.h"
 #include "mtk_wcn_consys_hw.h"
 #include "wmt_ic.h"
 #include "wmt_lib.h"
@@ -54,7 +45,7 @@
 #include "wmt_plat.h"
 #include "stp_dbg.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#if (COMMON_KERNEL_CLK_SUPPORT)
 #include <soc/mediatek/emi.h>
 #else
 #include <memory/mediatek/emi.h>
@@ -76,6 +67,10 @@
 #endif
 
 #include <linux/of_reserved_mem.h>
+
+#if (!COMMON_KERNEL_CLK_SUPPORT)
+#include <mtk_clkbuf_ctl.h>
+#endif
 
 /* Direct path */
 #include <mtk_ccci_common.h>
@@ -112,7 +107,6 @@ static INT32 consys_hw_wifi_vcn33_ctrl(UINT32 enable);
 static INT32 consys_hw_bt_vcn33_ctrl(UINT32 enable);
 static INT32 consys_hw_vcn_ctrl_after_idle(VOID);
 static UINT32 consys_soc_chipid_get(VOID);
-static INT32 consys_adie_chipid_detect(VOID);
 static INT32 consys_emi_mpu_set_region_protection(VOID);
 static UINT32 consys_emi_set_remapping_reg(VOID);
 static INT32 bt_wifi_share_v33_spin_lock_init(VOID);
@@ -149,6 +143,7 @@ static UINT32 consys_store_pdev(struct platform_device *pdev);
  * otherwise: 0
  */
 static INT32 consys_calibration_backup_restore_support(VOID);
+static INT32 consys_is_ant_swap_enable_by_hwid(INT32 pin_num);
 #if WMT_DEVAPC_DBG_SUPPORT
 static VOID consys_devapc_violation_cb(VOID);
 #endif
@@ -158,14 +153,15 @@ static VOID consys_emi_entry_address(VOID);
 static VOID consys_set_xo_osc_ctrl(VOID);
 static VOID consys_identify_adie(VOID);
 static VOID consys_wifi_ctrl_setting(VOID);
+static VOID consys_wifi_ctrl_switch_conn_mode(VOID);
 static VOID consys_bus_timeout_config(VOID);
 static VOID consys_set_access_emi_hw_mode(VOID);
 static INT32 consys_dump_gating_state(P_CONSYS_STATE state);
 static INT32 consys_sleep_info_enable_ctrl(UINT32 enable);
 static INT32 consys_sleep_info_read_ctrl(WMT_SLEEP_COUNT_TYPE type, PUINT64 sleep_counter, PUINT64 sleep_timer);
 static INT32 consys_sleep_info_clear(VOID);
-static VOID consys_conn2ap_sw_irq_clear(VOID);
 static UINT64 consys_get_options(VOID);
+static INT32 consys_polling_goto_idle(VOID);
 
 static INT32 dump_conn_mcu_pc_log_wrapper(VOID);
 static INT32 consys_cmd_tx_timeout_dump(VOID);
@@ -173,7 +169,6 @@ static INT32 consys_cmd_rx_timeout_dump(VOID);
 static INT32 consys_coredump_timeout_dump(VOID);
 static INT32 consys_assert_timeout_dump(VOID);
 static INT32 consys_before_chip_reset_dump(VOID);
-static INT32 consys_ipi_timeout_dump(VOID);
 
 static INT32 consys_jtag_set_for_mcu(VOID);
 static UINT32 consys_jtag_flag_ctrl(UINT32 enable);
@@ -201,8 +196,8 @@ static struct regulator *reg_VCN33_1_WIFI;
 static struct regulator *reg_VCN33_2_WIFI;
 #endif
 
-extern int g_mapped_reg_table_sz_mt6853;
-extern REG_MAP_ADDR g_mapped_reg_table_mt6853[];
+extern int g_mapped_reg_table_sz_mt6873;
+extern REG_MAP_ADDR g_mapped_reg_table_mt6873[];
 
 static EMI_CTRL_STATE_OFFSET mtk_wcn_emi_state_off = {
 	.emi_apmem_ctrl_state = EXP_APMEM_CTRL_STATE,
@@ -236,7 +231,7 @@ static CONSYS_EMI_ADDR_INFO mtk_wcn_emi_addr_info = {
 	.emi_core_dump_offset = CONSYS_EMI_COREDUMP_OFFSET,
 };
 
-WMT_CONSYS_IC_OPS consys_ic_ops_mt6853 = {
+WMT_CONSYS_IC_OPS consys_ic_ops_mt6873 = {
 	.consys_ic_clock_buffer_ctrl = consys_clock_buffer_ctrl,
 	.consys_ic_hw_reset_bit_set = consys_hw_reset_bit_set,
 	.consys_ic_hw_spm_clk_gating_enable = consys_hw_spm_clk_gating_enable,
@@ -252,7 +247,6 @@ WMT_CONSYS_IC_OPS consys_ic_ops_mt6853 = {
 	.consys_ic_hw_bt_vcn33_ctrl = consys_hw_bt_vcn33_ctrl,
 	.consys_ic_hw_vcn_ctrl_after_idle = consys_hw_vcn_ctrl_after_idle,
 	.consys_ic_soc_chipid_get = consys_soc_chipid_get,
-	.consys_ic_adie_chipid_detect = consys_adie_chipid_detect,
 	.consys_ic_emi_mpu_set_region_protection = consys_emi_mpu_set_region_protection,
 	.consys_ic_emi_set_remapping_reg = consys_emi_set_remapping_reg,
 	.ic_bt_wifi_share_v33_spin_lock_init = bt_wifi_share_v33_spin_lock_init,
@@ -279,11 +273,13 @@ WMT_CONSYS_IC_OPS consys_ic_ops_mt6853 = {
 	.consys_ic_set_pdma_axi_rready_force_high = consys_set_pdma_axi_rready_force_high,
 	.consys_ic_set_mcif_emi_mpu_protection = consys_set_mcif_emi_mpu_protection,
 	.consys_ic_calibration_backup_restore = consys_calibration_backup_restore_support,
+	.consys_ic_is_ant_swap_enable_by_hwid = consys_is_ant_swap_enable_by_hwid,
 	.consys_ic_register_devapc_cb = consyc_register_devapc_cb,
 	.consys_ic_emi_entry_address = consys_emi_entry_address,
 	.consys_ic_set_xo_osc_ctrl = consys_set_xo_osc_ctrl,
 	.consys_ic_identify_adie = consys_identify_adie,
 	.consys_ic_wifi_ctrl_setting = consys_wifi_ctrl_setting,
+	.consys_ic_wifi_ctrl_switch_conn_mode = consys_wifi_ctrl_switch_conn_mode,
 	.consys_ic_bus_timeout_config = consys_bus_timeout_config,
 	.consys_ic_set_access_emi_hw_mode = consys_set_access_emi_hw_mode,
 	.consys_ic_dump_gating_state = consys_dump_gating_state,
@@ -291,6 +287,10 @@ WMT_CONSYS_IC_OPS consys_ic_ops_mt6853 = {
 	.consys_ic_sleep_info_read_ctrl = consys_sleep_info_read_ctrl,
 	.consys_ic_sleep_info_clear = consys_sleep_info_clear,
 	.consys_ic_get_options = consys_get_options,
+#if (COMMON_KERNEL_CLK_SUPPORT)
+	.consys_ic_need_store_pdev = consys_need_store_pdev,
+	.consys_ic_store_pdev = consys_store_pdev,
+#endif
 
 	/* debug dump */
 	.consys_ic_cmd_tx_timeout_dump = consys_cmd_tx_timeout_dump,
@@ -298,19 +298,16 @@ WMT_CONSYS_IC_OPS consys_ic_ops_mt6853 = {
 	.consys_ic_coredump_timeout_dump = consys_coredump_timeout_dump,
 	.consys_ic_assert_timeout_dump = consys_assert_timeout_dump,
 	.consys_ic_before_chip_reset_dump = consys_before_chip_reset_dump,
-	.consys_ic_ipi_timeout_dump = consys_ipi_timeout_dump,
 
 	.consys_ic_pc_log_dump = dump_conn_mcu_pc_log_wrapper,
-#if (COMMON_KERNEL_CLK_SUPPORT)
-	.consys_ic_need_store_pdev = consys_need_store_pdev,
-	.consys_ic_store_pdev = consys_store_pdev,
-#endif
+
+	.consys_ic_polling_goto_idle = consys_polling_goto_idle,
 
 	.consys_ic_jtag_set_for_mcu = consys_jtag_set_for_mcu,
 	.consys_ic_jtag_flag_ctrl = consys_jtag_flag_ctrl,
 
-	.consys_ic_get_debug_reg_ary_size = &g_mapped_reg_table_sz_mt6853,
-	.consys_ic_get_debug_reg_ary = g_mapped_reg_table_mt6853,
+	.consys_ic_get_debug_reg_ary_size = &g_mapped_reg_table_sz_mt6873,
+	.consys_ic_get_debug_reg_ary = g_mapped_reg_table_mt6873,
 };
 
 static const struct connlog_emi_config connsys_fw_log_parameter = {
@@ -345,7 +342,9 @@ static struct devapc_vio_callbacks devapc_handle = {
 
 #if CONSYS_ENALBE_SET_JTAG
 #define JTAG_ADDR1_BASE 0x10005000
-#define JTAG_ADDR2_BASE 0x11c00000
+#define JTAG_ADDR2_BASE 0x11E80000
+#define JTAG_ADDR3_BASE 0x11D20000
+#define AP2CONN_JTAG_2WIRE_OFFSET 0xF00
 #endif
 
 static INT32 consys_jtag_set_for_mcu(VOID)
@@ -357,19 +356,28 @@ static INT32 consys_jtag_set_for_mcu(VOID)
 	PVOID addr = 0;
 	PVOID remap_addr1 = 0;
 	PVOID remap_addr2 = 0;
+	PVOID remap_addr3 = 0;
 
 	if (gJtagCtrl) {
+
 		remap_addr1 = ioremap(JTAG_ADDR1_BASE, 0x1000);
 		if (remap_addr1 == 0) {
-			WMT_PLAT_PR_INFO("remap jtag_addr1 fail!\n");
+			WMT_PLAT_PR_ERR("remap jtag_addr1 fail!\n");
 			ret = -1;
 			goto error;
 		}
 
 		remap_addr2 = ioremap(JTAG_ADDR2_BASE, 0x100);
 		if (remap_addr2 == 0) {
-			WMT_PLAT_PR_INFO("remap jtag_addr2 fail!\n");
+			WMT_PLAT_PR_ERR("remap jtag_addr2 fail!\n");
 			ret = -1;
+			goto error;
+		}
+
+		remap_addr3 = ioremap(JTAG_ADDR3_BASE, 0x100);
+		if (remap_addr3 == 0) {
+			WMT_PLAT_PR_ERR("remap jtag_addr3 fail!\n");
+			ret =  -1;
 			goto error;
 		}
 
@@ -377,51 +385,97 @@ static INT32 consys_jtag_set_for_mcu(VOID)
 		switch (gJtagCtrl) {
 		case 1:
 			/* 7-wire jtag pinmux setting*/
+#if 1
 			/* PAD AUX Function Selection */
-			addr = remap_addr1 + 0x360;
+			addr = remap_addr1 + 0x320;
 			tmp = readl(addr);
-			tmp = tmp & 0xfff0f;
-			tmp = tmp | 0x66600060;
-			writel(tmp, addr);
-			tmp = readl(addr);
-			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
-
-			addr = remap_addr1 + 0x370;
-			tmp = readl(addr);
-			tmp = tmp & 0xfffff000;
-			tmp = tmp | 0x666;
+			tmp = tmp & 0x0000000f;
+			tmp = tmp | 0x33333330;
 			writel(tmp, addr);
 			tmp = readl(addr);
 			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
 
 			/* PAD Driving Selection */
-			addr = remap_addr2 + 0x0;
+			addr = remap_addr2 + 0xA0;
 			tmp = readl(addr);
-			tmp = tmp & 0xf80001f8;
-			tmp = tmp | 0x36db603;
+			tmp = tmp & 0xfff00fff;
+			tmp = tmp | 0x00077000;
 			writel(tmp, addr);
 			tmp = readl(addr);
 			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
 
-			/* PAD IES */
-			addr = remap_addr2 + 0x10;
+			/* PAD PULL Selection */
+			addr = remap_addr2 + 0x60;
 			tmp = readl(addr);
-			tmp = tmp & 0xfffffe06;
-			tmp = tmp | 0xf1;
+			tmp = tmp & 0xfffe03ff;
 			writel(tmp, addr);
 			tmp = readl(addr);
 			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
 
+			addr = remap_addr2 + 0x60;
+			tmp = readl(addr);
+			tmp = tmp & 0xfff80fff;
+			writel(tmp, addr);
+			tmp = readl(addr);
+			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+
+#else
+			/* backup */
+			/* PAD AUX Function Selection */
+			addr = remap_addr1 + 0x310;
+			tmp = readl(addr);
+			tmp = tmp & 0xfffff000;
+			tmp = tmp | 0x00000444;
+			writel(tmp, addr);
+			tmp = readl(addr);
+			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+
+			addr = remap_addr1 + 0x3C0;
+			tmp = readl(addr);
+			tmp = tmp & 0xf00ff00f;
+			tmp = tmp | 0x04400440;
+			writel(tmp, addr);
+			tmp = readl(addr);
+			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+
+			/* PAD Driving Selection */
+			addr = remap_addr3 + 0xA0;
+			tmp = readl(addr);
+			tmp = tmp & 0x0ffffff0;
+			tmp = tmp | 0x70000007;
+			writel(tmp, addr);
+			tmp = readl(addr);
+			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+
+			addr = remap_addr3 + 0xB0;
+			tmp = readl(addr);
+			tmp = tmp & 0xfff0f0ff;
+			tmp = tmp | 0x0007070f;
+			writel(tmp, addr);
+			tmp = readl(addr);
+			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+
+			/* PAD PULL Selection */
+			addr = remap_addr3 + 0x60;
+			tmp = readl(addr);
+			tmp = tmp & 0xf333fffe;
+			writel(tmp, addr);
+			tmp = readl(addr);
+			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+#endif
 			break;
 		case 2:
 			/* 2-wire jtag pinmux setting*/
-			addr = remap_addr1 + 0x400;
+#if 0
+			CONSYS_SET_BIT(conn_reg.topckgen_base + AP2CONN_JTAG_2WIRE_OFFSET, 1 << 8);
+			addr = remap_addr1 + 0x340;
 			tmp = readl(addr);
-			tmp = tmp & 0xfffff00f;
-			tmp = tmp | 0x430;
+			tmp = tmp & 0xfff88fff;
+			tmp = tmp | 0x00034000;
 			writel(tmp, addr);
 			tmp = readl(addr);
 			WMT_PLAT_PR_INFO("(RegAddr, RegVal):(0x%p, 0x%x)\n", addr, tmp);
+#endif
 			break;
 		default:
 			WMT_PLAT_PR_INFO("unsupported options!\n");
@@ -431,10 +485,14 @@ static INT32 consys_jtag_set_for_mcu(VOID)
 #endif
 
 error:
+
 	if (remap_addr1)
 		iounmap(remap_addr1);
 	if (remap_addr2)
 		iounmap(remap_addr2);
+	if (remap_addr3)
+		iounmap(remap_addr3);
+
 	return ret;
 #else
 	WMT_PLAT_PR_INFO("No support switch to JTAG!\n");
@@ -456,14 +514,14 @@ static INT32 consys_clk_get_from_dts(struct platform_device *pdev)
 #if (!COMMON_KERNEL_CLK_SUPPORT)
 	clk_scp_conn_main = devm_clk_get(&pdev->dev, "conn");
 	if (IS_ERR(clk_scp_conn_main)) {
-		WMT_PLAT_PR_INFO("[CCF]cannot get clk_scp_conn_main clock.\n");
+		WMT_PLAT_PR_ERR("[CCF]cannot get clk_scp_conn_main clock.\n");
 		return PTR_ERR(clk_scp_conn_main);
 	}
 	WMT_PLAT_PR_DBG("[CCF]clk_scp_conn_main=%p\n", clk_scp_conn_main);
 #endif
 	clk_infracfg_ao_ccif4_ap_cg = devm_clk_get(&pdev->dev, "ccif");
 	if (IS_ERR(clk_infracfg_ao_ccif4_ap_cg)) {
-		WMT_PLAT_PR_INFO("[CCF]cannot get clk_infracfg_ao_ccif4_ap_cg clock.\n");
+		WMT_PLAT_PR_ERR("[CCF]cannot get clk_infracfg_ao_ccif4_ap_cg clock.\n");
 		return PTR_ERR(clk_infracfg_ao_ccif4_ap_cg);
 	}
 	WMT_PLAT_PR_DBG("[CCF]clk_infracfg_ao_ccif4_ap_cg=%p\n", clk_infracfg_ao_ccif4_ap_cg);
@@ -476,19 +534,19 @@ static INT32 consys_pmic_get_from_dts(struct platform_device *pdev)
 #if CONSYS_PMIC_CTRL_ENABLE
 	reg_VCN18 = regulator_get(&pdev->dev, "vcn18");
 	if (!reg_VCN18)
-		WMT_PLAT_PR_INFO("Regulator_get VCN_1V8 fail\n");
+		WMT_PLAT_PR_ERR("Regulator_get VCN_1V8 fail\n");
 	reg_VCN13 = regulator_get(&pdev->dev, "vcn13");
 	if (!reg_VCN13)
-		WMT_PLAT_PR_INFO("Regulator_get VCN_1V3 fail\n");
+		WMT_PLAT_PR_ERR("Regulator_get VCN_1V3 fail\n");
 	reg_VCN33_1_BT = regulator_get(&pdev->dev, "vcn33_1_bt");
 	if (!reg_VCN33_1_BT)
-		WMT_PLAT_PR_INFO("Regulator_get VCN33_1_BT fail\n");
+		WMT_PLAT_PR_ERR("Regulator_get VCN33_1_BT fail\n");
 	reg_VCN33_1_WIFI = regulator_get(&pdev->dev, "vcn33_1_wifi");
 	if (!reg_VCN33_1_WIFI)
-		WMT_PLAT_PR_INFO("Regulator_get VCN33_1_WIFI fail\n");
+		WMT_PLAT_PR_ERR("Regulator_get VCN33_1_WIFI fail\n");
 	reg_VCN33_2_WIFI = regulator_get(&pdev->dev, "vcn33_2_wifi");
 	if (!reg_VCN33_2_WIFI)
-		WMT_PLAT_PR_INFO("Regulator_get VCN33_2_WIFI fail\n");
+		WMT_PLAT_PR_ERR("Regulator_get VCN33_2_WIFI fail\n");
 #endif
 
 	return 0;
@@ -501,11 +559,11 @@ static INT32 consys_co_clock_type(VOID)
 
 static INT32 consys_clock_buffer_ctrl(MTK_WCN_BOOL enable)
 {
-#if 0
+#if (!COMMON_KERNEL_CLK_SUPPORT)
 	if (enable)
-		KERNEL_clk_buf_ctrl(CLK_BUF_CONN, true);	/*open XO_WCN*/
+		clk_buf_ctrl(CLK_BUF_CONN, true);	/*open XO_WCN*/
 	else
-		KERNEL_clk_buf_ctrl(CLK_BUF_CONN, false);	/*close XO_WCN*/
+		clk_buf_ctrl(CLK_BUF_CONN, false);	/*close XO_WCN*/
 #endif
 	return 0;
 }
@@ -518,16 +576,17 @@ static VOID consys_set_if_pinmux(MTK_WCN_BOOL enable)
 	/* Switch D die pinmux for connecting A die */
 	consys_if_pinmux_reg_base = ioremap(CONSYS_IF_PINMUX_REG_BASE, 0x1000);
 	if (!consys_if_pinmux_reg_base) {
-		WMT_PLAT_PR_INFO("consys_if_pinmux_reg_base(%x) ioremap fail\n",
+		WMT_PLAT_PR_ERR("consys_if_pinmux_reg_base(%x) ioremap fail\n",
 				CONSYS_IF_PINMUX_REG_BASE);
 		return;
 	}
 
 	consys_if_pinmux_driving_base = ioremap(CONSYS_IF_PINMUX_DRIVING_BASE, 0x100);
 	if (!consys_if_pinmux_driving_base) {
-		WMT_PLAT_PR_INFO("consys_if_pinmux_driving_base(%x) ioremap fail\n",
+		WMT_PLAT_PR_ERR("consys_if_pinmux_driving_base(%x) ioremap fail\n",
 				CONSYS_IF_PINMUX_DRIVING_BASE);
-		iounmap(consys_if_pinmux_reg_base);
+		if (consys_if_pinmux_reg_base)
+			iounmap(consys_if_pinmux_reg_base);
 		return;
 	}
 
@@ -549,14 +608,11 @@ static VOID consys_set_if_pinmux(MTK_WCN_BOOL enable)
 				(CONSYS_REG_READ(consys_if_pinmux_driving_base +
 				CONSYS_IF_PINMUX_DRIVING_OFFSET_2) &
 				CONSYS_IF_PINMUX_DRIVING_MASK_2) | CONSYS_IF_PINMUX_DRIVING_VALUE_2);
-#if CLK_CTRL_TCXOENA_REQ
 		if (wmt_plat_soc_co_clock_flag_get() == 0) {
 			CONSYS_REG_WRITE(consys_if_pinmux_reg_base + CONSYS_CLOCK_TCXO_MODE_OFFSET,
 					(CONSYS_REG_READ(consys_if_pinmux_reg_base + CONSYS_CLOCK_TCXO_MODE_OFFSET) &
 					CONSYS_CLOCK_TCXO_MODE_MASK) | CONSYS_CLOCK_TCXO_MODE_VALUE);
-			WMT_PLAT_PR_INFO("set GPIO137 pinmux for TCXO mode (Aux5)\n");
 		}
-#endif
 	} else {
 		CONSYS_REG_WRITE(consys_if_pinmux_reg_base + CONSYS_IF_PINMUX_01_OFFSET,
 				CONSYS_REG_READ(consys_if_pinmux_reg_base +
@@ -564,25 +620,16 @@ static VOID consys_set_if_pinmux(MTK_WCN_BOOL enable)
 		CONSYS_REG_WRITE(consys_if_pinmux_reg_base + CONSYS_IF_PINMUX_02_OFFSET,
 				CONSYS_REG_READ(consys_if_pinmux_reg_base +
 				CONSYS_IF_PINMUX_02_OFFSET) & CONSYS_IF_PINMUX_02_MASK);
-#if CLK_CTRL_TCXOENA_REQ
-		if (wmt_plat_soc_co_clock_flag_get() == 0) {
-			CONSYS_REG_WRITE(consys_if_pinmux_reg_base + CONSYS_CLOCK_TCXO_MODE_OFFSET,
-					CONSYS_REG_READ(consys_if_pinmux_reg_base + CONSYS_CLOCK_TCXO_MODE_OFFSET) &
-					CONSYS_CLOCK_TCXO_MODE_MASK);
-		}
-#endif
 	}
 
-	iounmap(consys_if_pinmux_reg_base);
-	iounmap(consys_if_pinmux_driving_base);
+	if (consys_if_pinmux_reg_base)
+		iounmap(consys_if_pinmux_reg_base);
+	if (consys_if_pinmux_driving_base)
+		iounmap(consys_if_pinmux_driving_base);
 }
 
 static VOID consys_hw_reset_bit_set(MTK_WCN_BOOL enable)
 {
-	UINT32 consys_ver_id = 0;
-	UINT32 cnt = 0;
-	UINT8 *consys_reg_base = NULL;
-
 	if (enable) {
 		/*3.assert CONNSYS CPU SW reset  0x10007018 "[12]=1'b1  [31:24]=8'h88 (key)" */
 		CONSYS_REG_WRITE((conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET),
@@ -593,39 +640,35 @@ static VOID consys_hw_reset_bit_set(MTK_WCN_BOOL enable)
 		CONSYS_REG_WRITE(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET,
 				(CONSYS_REG_READ(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET) &
 				 ~CONSYS_CPU_SW_RST_BIT) | CONSYS_CPU_SW_RST_CTRL_KEY);
-		/* check CONNSYS power-on completion
-		 * (polling "0x8000_0600[31:0]" == 0x1D1E and each polling interval is "1ms")
-		 * (apply this for guarantee that CONNSYS CPU goes to "cos_idle_loop")
-		 */
-		consys_ver_id = CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_COM_REG0);
-		while (consys_ver_id != 0x1D1E) {
-			if (cnt > 10)
-				break;
-			consys_ver_id = CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_COM_REG0);
-			WMT_PLAT_PR_INFO("0x18002600(0x%x)\n", consys_ver_id);
-			WMT_PLAT_PR_INFO("0x1800216c(0x%x)\n",
-					CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_SW_DBG_CTL));
-			WMT_PLAT_PR_INFO("0x18007104(0x%x)\n",
-					CONSYS_REG_READ(conn_reg.mcu_conn_hif_on_base +
-					CONSYS_CPUPCR_OFFSET));
-			msleep(20);
-			cnt++;
-		}
-
-		if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE) {
-			/* if(MT6635) CONN_WF_CTRL2 swtich to CONN mode */
-			consys_reg_base = ioremap(CONSYS_IF_PINMUX_REG_BASE, 0x1000);
-			if (!consys_reg_base) {
-				WMT_PLAT_PR_INFO("consys_if_pinmux_reg_base(%x) ioremap fail\n",
-						CONSYS_IF_PINMUX_REG_BASE);
-				return;
-			}
-			CONSYS_REG_WRITE(consys_reg_base + CONSYS_WF_CTRL2_03_OFFSET,
-					(CONSYS_REG_READ(consys_reg_base + CONSYS_WF_CTRL2_03_OFFSET) &
-					CONSYS_WF_CTRL2_03_MASK) | CONSYS_WF_CTRL2_CONN_MODE);
-			iounmap(consys_reg_base);
-		}
 	}
+}
+
+static INT32 consys_polling_goto_idle(VOID)
+{
+	UINT32 consys_ver_id = 0;
+	UINT32 cnt = 0;
+
+	/* check CONNSYS power-on completion
+	 * (polling "0x8000_0600[31:0]" == 0x1D1E and each polling interval is "1ms")
+	 * (apply this for guarantee that CONNSYS CPU goes to "cos_idle_loop")
+	 */
+	consys_ver_id = CONSYS_REG_READ(conn_reg.mcu_base + 0x600);
+	while (consys_ver_id != 0x1D1E) {
+		if (cnt > 10) {
+			WMT_PLAT_PR_ERR("can not go into idle!\n");
+			return -WMT_ERRCODE_POLL_NOT_GOTO_IDLE;
+		}
+		consys_ver_id = CONSYS_REG_READ(conn_reg.mcu_base + 0x600);
+		WMT_PLAT_PR_INFO("0x18002600(0x%x)\n", consys_ver_id);
+		WMT_PLAT_PR_INFO("0x1800216c(0x%x)\n",
+				CONSYS_REG_READ(conn_reg.mcu_base + 0x16c));
+		WMT_PLAT_PR_INFO("0x18007104(0x%x)\n",
+				CONSYS_REG_READ(conn_reg.mcu_conn_hif_on_base +
+				CONSYS_CPUPCR_OFFSET));
+		msleep(20);
+		cnt++;
+	}
+	return 0;
 }
 
 static VOID consys_hw_spm_clk_gating_enable(VOID)
@@ -649,7 +692,7 @@ static INT32 consys_hw_power_ctrl(MTK_WCN_BOOL enable)
 #if CONSYS_PWR_ON_OFF_API_AVAILABLE
 		iRet = clk_prepare_enable(clk_infracfg_ao_ccif4_ap_cg);
 		if (iRet) {
-			WMT_PLAT_PR_INFO("clk_prepare_enable(clk_infracfg_ao_ccif4_ap_cg) fail(%d)\n", iRet);
+			WMT_PLAT_PR_ERR("clk_prepare_enable(clk_infracfg_ao_ccif4_ap_cg) fail(%d)\n", iRet);
 			return iRet;
 		}
 		WMT_PLAT_PR_DBG("clk_prepare_enable(clk_infracfg_ao_ccif4_ap_cg) ok\n");
@@ -668,7 +711,7 @@ static INT32 consys_hw_power_ctrl(MTK_WCN_BOOL enable)
 #else
 		iRet = clk_prepare_enable(clk_scp_conn_main);
 		if (iRet) {
-			WMT_PLAT_PR_INFO("clk_prepare_enable(clk_scp_conn_main) fail(%d)\n", iRet);
+			WMT_PLAT_PR_ERR("clk_prepare_enable(clk_scp_conn_main) fail(%d)\n", iRet);
 			return iRet;
 		}
 		WMT_PLAT_PR_DBG("clk_prepare_enable(clk_scp_conn_main) ok\n");
@@ -856,8 +899,8 @@ static INT32 consys_hw_power_ctrl(MTK_WCN_BOOL enable)
 			WMT_PLAT_PR_INFO("[POS polling info] >> check AHB TX bus sleep protect turn off fail\n");
 #endif /* CONSYS_PWR_ON_OFF_API_AVAILABLE */
 
-		atomic_set(&g_power_on, 1);
 		/*wait 5ms*/
+		atomic_set(&g_power_on, 1);
 		mdelay(5);
 	} else {
 		osal_lock_unsleepable_lock(&g_pwr_off_lock);
@@ -1033,12 +1076,10 @@ static INT32 polling_consys_chipid(VOID)
 			consys_fw_ver = CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_FW_ID_OFFSET);
 			WMT_PLAT_PR_INFO("consys FW version id(0x%x)\n", consys_fw_ver & 0xFFFF);
 
-			/* TODO: NEW API for ROM patch download */
-			if (mtk_wcn_consys_get_adie_chipid())
-				consys_dl_rom_patch(consys_ver_id, consys_fw_ver);
+			consys_dl_rom_patch(consys_ver_id, consys_fw_ver);
 			break;
 		}
-		WMT_PLAT_PR_INFO("Read CONSYS version id(0x%08x)", consys_ver_id);
+		WMT_PLAT_PR_ERR("Read CONSYS version id(0x%08x)", consys_ver_id);
 		msleep(20);
 	}
 
@@ -1106,7 +1147,7 @@ static VOID consys_afe_reg_setting(VOID)
 			CONSYS_AFE_WBG_REG_GL5_01_VALUE);
 		iounmap(consys_afe_wbg_reg_base);
 	} else {
-		WMT_PLAT_PR_INFO("CONSYS_AFE_WBG_REG_BASE(0x%x) ioremap fail!\n",
+		WMT_PLAT_PR_ERR("CONSYS_AFE_WBG_REG_BASE(0x%x) ioremap fail!\n",
 			CONSYS_AFE_WBG_REG_BASE);
 	}
 }
@@ -1127,7 +1168,6 @@ static VOID consys_set_xo_osc_ctrl(VOID)
 {
 	UINT8 *consys_reg_base = NULL;
 	UINT32 value = 0;
-	UINT32 xo_value;
 
 	consys_reg_base = ioremap(CONSYS_COCLOCK_STABLE_TIME_BASE, 0x100);
 	if (consys_reg_base) {
@@ -1151,34 +1191,29 @@ static VOID consys_set_xo_osc_ctrl(VOID)
 				CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_ACK_ENABLE_OFFSET, value);
 			}
 		} else {
-			if (wmt_plat_soc_co_clock_flag_get())
-				xo_value = CONSYS_COCLOCK_RC_CTL_1_XO_VALUE;
-			else
-				xo_value = CONSYS_COCLOCK_RC_CTL_1_XO_TCXO_VALUE;
-
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_1_GPS_XO_OFFSET,
-				xo_value);
+				CONSYS_COCLOCK_RC_CTL_1_XO_VALUE);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_GPS_ACK_OFFSET,
 				CONSYS_REG_READ(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_GPS_ACK_OFFSET) &
 				~CONSYS_COCLOCK_RC_CTL_0_ACK_BIT);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_1_BT_XO_OFFSET,
-				xo_value);
+				CONSYS_COCLOCK_RC_CTL_1_XO_VALUE);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_BT_ACK_OFFSET,
 				CONSYS_REG_READ(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_BT_ACK_OFFSET) &
 				~CONSYS_COCLOCK_RC_CTL_0_ACK_BIT);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_1_WF_XO_OFFSET,
-				xo_value);
+				CONSYS_COCLOCK_RC_CTL_1_XO_VALUE);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_WF_ACK_OFFSET,
 				CONSYS_REG_READ(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_WF_ACK_OFFSET) &
 				~CONSYS_COCLOCK_RC_CTL_0_ACK_BIT);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_1_TOP_XO_OFFSET,
-				xo_value);
+				CONSYS_COCLOCK_RC_CTL_1_XO_VALUE);
 
 			CONSYS_REG_WRITE(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_TOP_ACK_OFFSET,
 				CONSYS_REG_READ(consys_reg_base + CONSYS_COCLOCK_RC_CTL_0_TOP_ACK_OFFSET) &
@@ -1206,7 +1241,7 @@ static VOID consys_set_xo_osc_ctrl(VOID)
 		}
 		iounmap(consys_reg_base);
 	} else {
-			WMT_PLAT_PR_INFO("connsys co_clock stable time base(0x%x) ioremap fail!\n",
+			WMT_PLAT_PR_ERR("connsys co_clock stable time base(0x%x) ioremap fail!\n",
 					  CONSYS_COCLOCK_STABLE_TIME_BASE);
 	}
 }
@@ -1217,48 +1252,71 @@ static VOID consys_identify_adie(VOID)
 
 	consys_reg_base = ioremap(CONSYS_IDENTIFY_ADIE_CR_ADDRESS, 0x100);
 	if (consys_reg_base) {
-		if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
-			CONSYS_REG_WRITE(consys_reg_base,
-				CONSYS_REG_READ(consys_reg_base) &
-				~CONSYS_IDENTIFY_ADIE_ENABLE_BIT);
-		else
-			CONSYS_REG_WRITE(consys_reg_base,
-				CONSYS_REG_READ(consys_reg_base) |
-				CONSYS_IDENTIFY_ADIE_ENABLE_BIT);
+#if CONSYS_PMIC_CTRL_6635
+		CONSYS_REG_WRITE(consys_reg_base,
+			CONSYS_REG_READ(consys_reg_base) &
+			~CONSYS_IDENTIFY_ADIE_ENABLE_BIT);
+#else
+		CONSYS_REG_WRITE(consys_reg_base,
+			CONSYS_REG_READ(consys_reg_base) |
+			CONSYS_IDENTIFY_ADIE_ENABLE_BIT);
+#endif
 		iounmap(consys_reg_base);
 	} else {
-		WMT_PLAT_PR_INFO("CONSYS_IDENTIFY_ADIE_CR_ADDRESS(0x%x) ioremap fail!\n",
+		WMT_PLAT_PR_ERR("CONSYS_IDENTIFY_ADIE_CR_ADDRESS(0x%x) ioremap fail!\n",
 			CONSYS_IDENTIFY_ADIE_CR_ADDRESS);
 	}
 }
 
 static VOID consys_wifi_ctrl_setting(VOID)
 {
-	UINT8 *reg_base = NULL;
-
-	if (mtk_wcn_consys_get_adie_chipid() != SECONDARY_ADIE)
-		return;
+#if CONSYS_PMIC_CTRL_6635
+	UINT8 *consys_reg_base = NULL;
 
 	/* if(MT6635)
 	 * CONN_WF_CTRL2 swtich to GPIO mode, GPIO output value
 	 * before patch download swtich back to CONN mode.
 	 */
-	reg_base = ioremap(CONSYS_IF_PINMUX_REG_BASE, 0x1000);
-	if (reg_base) {
-		CONSYS_REG_WRITE(reg_base + CONSYS_WF_CTRL2_01_OFFSET,
-				(CONSYS_REG_READ(reg_base + CONSYS_WF_CTRL2_01_OFFSET) &
+	consys_reg_base = ioremap(CONSYS_IF_PINMUX_REG_BASE, 0x1000);
+	if (consys_reg_base) {
+		CONSYS_REG_WRITE(consys_reg_base + CONSYS_WF_CTRL2_01_OFFSET,
+				(CONSYS_REG_READ(consys_reg_base + CONSYS_WF_CTRL2_01_OFFSET) &
 				CONSYS_WF_CTRL2_01_MASK) | CONSYS_WF_CTRL2_01_VALUE);
-		CONSYS_REG_WRITE(reg_base + CONSYS_WF_CTRL2_02_OFFSET,
-				(CONSYS_REG_READ(reg_base + CONSYS_WF_CTRL2_02_OFFSET) &
+		CONSYS_REG_WRITE(consys_reg_base + CONSYS_WF_CTRL2_02_OFFSET,
+				(CONSYS_REG_READ(consys_reg_base + CONSYS_WF_CTRL2_02_OFFSET) &
 				CONSYS_WF_CTRL2_02_MASK) | CONSYS_WF_CTRL2_02_VALUE);
-		CONSYS_REG_WRITE(reg_base + CONSYS_WF_CTRL2_03_OFFSET,
-				(CONSYS_REG_READ(reg_base + CONSYS_WF_CTRL2_03_OFFSET) &
+		CONSYS_REG_WRITE(consys_reg_base + CONSYS_WF_CTRL2_03_OFFSET,
+				(CONSYS_REG_READ(consys_reg_base + CONSYS_WF_CTRL2_03_OFFSET) &
 				CONSYS_WF_CTRL2_03_MASK) | CONSYS_WF_CTRL2_GPIO_MODE);
-		iounmap(reg_base);
+		iounmap(consys_reg_base);
 	} else {
-		WMT_PLAT_PR_INFO("consys_if_pinmux_reg_base(0x%x) ioremap fail!\n",
+		WMT_PLAT_PR_ERR("consys_if_pinmux_reg_base(0x%x) ioremap fail!\n",
 			CONSYS_IF_PINMUX_REG_BASE);
 	}
+#endif
+}
+
+static VOID consys_wifi_ctrl_switch_conn_mode(VOID)
+{
+#if CONSYS_PMIC_CTRL_6635
+	UINT8 *consys_reg_base = NULL;
+
+	/* if(MT6635) CONN_WF_CTRL2 switch to CONN mode */
+	consys_reg_base = ioremap(CONSYS_IF_PINMUX_REG_BASE, 0x1000);
+	if (!consys_reg_base) {
+		WMT_PLAT_PR_ERR("consys_if_pinmux_reg_base(%x) ioremap fail\n",
+				CONSYS_IF_PINMUX_REG_BASE);
+		return;
+	}
+	CONSYS_REG_WRITE(consys_reg_base + CONSYS_WF_CTRL2_03_OFFSET,
+			(CONSYS_REG_READ(consys_reg_base + CONSYS_WF_CTRL2_03_OFFSET) &
+			CONSYS_WF_CTRL2_03_MASK) | CONSYS_WF_CTRL2_CONN_MODE);
+	if (consys_reg_base)
+		iounmap(consys_reg_base);
+	else
+		WMT_PLAT_PR_ERR("consys_if_pinmux_reg_base(0x%x) ioremap fail!\n",
+				CONSYS_IF_PINMUX_REG_BASE);
+#endif
 }
 
 static VOID consys_bus_timeout_config(VOID)
@@ -1271,190 +1329,9 @@ static VOID consys_bus_timeout_config(VOID)
 		CONSYS_REG_WRITE(consys_reg_base, CONSYS_AHB_TIMEOUT_EN_VALUE);
 		iounmap(consys_reg_base);
 	} else {
-		WMT_PLAT_PR_INFO("CONSYS_AHB_TIMEOUT_EN_ADDRESS(0x%x) ioremap fail!\n",
+		WMT_PLAT_PR_ERR("CONSYS_AHB_TIMEOUT_EN_ADDRESS(0x%x) ioremap fail!\n",
 				  CONSYS_AHB_TIMEOUT_EN_ADDRESS);
 	}
-}
-
-static VOID consys_hw_vcn33_primary_rc_mode_enable(VOID)
-{
-	WMT_PLAT_PR_INFO("Turn on reg_VCN33_1_BT in RC mode\n");
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 7);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 7);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 4);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 4);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 5);
-		/* SW_LP =0 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_1_LP_ADDR,
-			PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-	}
-#else
-	/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN7, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN4, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN6, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN5, 0, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
-#endif
-	if (reg_VCN33_1_BT) {
-		regulator_set_voltage(reg_VCN33_1_BT, VCN33_1_VOL, VCN33_1_VOL);
-		if (regulator_enable(reg_VCN33_1_BT))
-			WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-	}
-}
-
-static VOID consys_hw_vcn33_primary_legacy_mode_enable(VOID)
-{
-	WMT_PLAT_PR_INFO("Turn on reg_VCN33_1_BT in legacy mode\n");
-
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/* HW_OP_EN = 0, HW_OP_CFG = 0 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 0);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 1 << 0);
-		/* SW_LP =0 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_1_LP_ADDR,
-			PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-	}
-#else
-	/* HW_OP_EN = 0, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 1, HW_LP);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
-#endif
-	/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
-	if (reg_VCN33_1_BT) {
-		regulator_set_voltage(reg_VCN33_1_BT, VCN33_1_VOL, VCN33_1_VOL);
-		if (regulator_enable(reg_VCN33_1_BT))
-			WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-	}
-}
-
-static VOID consys_hw_vcn13_secondary_rc_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 7);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 7);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 4);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 4);
-		/* SW_LP =1 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN13_LP_ADDR,
-			PMIC_RG_LDO_VCN13_LP_MASK << PMIC_RG_LDO_VCN13_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN13_LP_SHIFT);
-	}
-#else
-	/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn13_lp(SRCLKEN7, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn13_lp(SRCLKEN6, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn13_lp(SRCLKEN5, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn13_lp(SRCLKEN4, 0, 1, HW_OFF);
-	/* SW_LP =1 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN13_LP, 0);
-#endif
-
-	if (reg_VCN13) {
-		regulator_set_voltage(reg_VCN13, 1300000, 1300000);
-		if (regulator_enable(reg_VCN13))
-			WMT_PLAT_PR_INFO("enable VCN13 fail\n");
-		else
-			WMT_PLAT_PR_DBG("enable VCN13 ok\n");
-	}
-}
-
-static VOID consys_hw_vcn13_secondary_legacy_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/* HW_OP_EN = 1, HW_OP_CFG = 1 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 0);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 1 << 0);
-		/* SW_LP=0 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN13_LP_ADDR,
-			PMIC_RG_LDO_VCN13_LP_MASK << PMIC_RG_LDO_VCN13_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN13_LP_SHIFT);
-	}
-#else
-	/* HW_OP_EN = 1, HW_OP_CFG = 1 */
-	KERNEL_pmic_ldo_vcn13_lp(SRCLKEN0, 1, 1, HW_LP);
-	/* SW_LP=0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN13_LP, 0);
-#endif
-
-	if (reg_VCN13) {
-		regulator_set_voltage(reg_VCN13, 1300000, 1300000);
-		if (regulator_enable(reg_VCN13))
-			WMT_PLAT_PR_INFO("enable VCN13 fail\n");
-		else
-			WMT_PLAT_PR_DBG("enable VCN13 ok\n");
-	}
-}
-
-static VOID consys_hw_vcn18_rc_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	WMT_PLAT_PR_INFO("Turn on VCN18 in RC mode\n");
-	if (g_regmap) {
-		/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 7);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 7);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 4);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 4);
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN18_LP_ADDR,
-			PMIC_RG_LDO_VCN18_LP_MASK << PMIC_RG_LDO_VCN18_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN18_LP_SHIFT);
-		}
-#else
-	/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn18_lp(SRCLKEN7, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn18_lp(SRCLKEN6, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn18_lp(SRCLKEN5, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn18_lp(SRCLKEN4, 0, 1, HW_OFF);
-
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN18_LP, 0);
-#endif
-}
-
-static VOID consys_hw_vcn18_legacy_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 0);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 1 << 0);
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN18_LP_ADDR,
-			PMIC_RG_LDO_VCN18_LP_MASK << PMIC_RG_LDO_VCN18_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN18_LP_SHIFT);
-	}
-#else
-	/* HW_OP_EN = 1, HW_OP_CFG = 1 */
-	KERNEL_pmic_ldo_vcn18_lp(SRCLKEN0, 1, 1, HW_LP);
-	/* SW_LP=0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN18_LP, 0);
-#endif
 }
 
 static INT32 consys_hw_vcn18_ctrl(MTK_WCN_BOOL enable)
@@ -1463,60 +1340,135 @@ static INT32 consys_hw_vcn18_ctrl(MTK_WCN_BOOL enable)
 	if (enable) {
 		if (consys_is_rc_mode_enable()) {
 			/* RC mode */
-			WMT_PLAT_PR_INFO("Turn on VCN18 in RC mode\n");
-			/* VCN18 op_mode = 0 */
-			consys_hw_vcn18_rc_mode_enable();
-			/*Set VCN18_SW_EN as 1 and set votage as 1V8*/
-			if (reg_VCN18) {
-				regulator_set_voltage(reg_VCN18, 1800000, 1800000);
-				if (regulator_enable(reg_VCN18))
-					WMT_PLAT_PR_INFO("enable VCN18 fail\n");
-				else
-					WMT_PLAT_PR_DBG("enable VCN18 ok\n");
+			WMT_PLAT_PR_INFO("Turn on VCN18, VCN13 in RC mode\n");
+			/* VCN18 */
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
+			KERNEL_pmic_ldo_vcn18_lp(SRCLKEN7, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn18_lp(SRCLKEN6, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn18_lp(SRCLKEN5, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn18_lp(SRCLKEN4, 0, 1, HW_OFF);
+			/* SW_LP =1 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN18_LP, 0);
+#else
+			if (g_regmap) {
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 7);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 7);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 6);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 6);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 5);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 5);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 4);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 0 << 4);
+				regmap_update_bits(g_regmap,
+					PMIC_RG_LDO_VCN18_LP_ADDR,
+					PMIC_RG_LDO_VCN18_LP_MASK << PMIC_RG_LDO_VCN18_LP_SHIFT,
+					0 << PMIC_RG_LDO_VCN18_LP_SHIFT);
 			}
-			if (mtk_wcn_consys_get_adie_chipid() == PRIMARY_ADIE)
-				consys_hw_vcn33_primary_rc_mode_enable();
-			else if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
-				consys_hw_vcn13_secondary_rc_mode_enable();
-		} else {
-			WMT_PLAT_PR_INFO("Turn on VCN18 in legacy mode\n");
-			consys_hw_vcn18_legacy_mode_enable();
+#endif
 
 			/*Set VCN18_SW_EN as 1 and set votage as 1V8*/
 			if (reg_VCN18) {
 				regulator_set_voltage(reg_VCN18, 1800000, 1800000);
 				if (regulator_enable(reg_VCN18))
-					WMT_PLAT_PR_INFO("enable VCN18 fail\n");
+					WMT_PLAT_PR_ERR("enable VCN18 fail\n");
 				else
 					WMT_PLAT_PR_DBG("enable VCN18 ok\n");
 			}
+
+			/* VCN13 */
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*  PMRC_EN[7][6][5][4] HW_OP_EN = 1, HW_OP_CFG = 0 */
+			KERNEL_pmic_ldo_vcn13_lp(SRCLKEN7, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn13_lp(SRCLKEN6, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn13_lp(SRCLKEN5, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn13_lp(SRCLKEN4, 0, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN13_LP, 0);
+#else
+			if (g_regmap) {
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 7);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 7);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 6);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 6);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 5);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 5);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 4);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 0 << 4);
+				regmap_update_bits(g_regmap,
+					PMIC_RG_LDO_VCN13_LP_ADDR,
+					PMIC_RG_LDO_VCN13_LP_MASK << PMIC_RG_LDO_VCN13_LP_SHIFT,
+					0 << PMIC_RG_LDO_VCN13_LP_SHIFT);
+			}
+#endif
+			if (reg_VCN13) {
+				regulator_set_voltage(reg_VCN13, 1300000, 1300000);
+				if (regulator_enable(reg_VCN13))
+					WMT_PLAT_PR_ERR("enable VCN13 fail\n");
+				else
+					WMT_PLAT_PR_DBG("enable VCN13 ok\n");
+			}
+		} else {
 			/* Legacy mode */
-			if (mtk_wcn_consys_get_adie_chipid() == PRIMARY_ADIE)
-				consys_hw_vcn33_primary_legacy_mode_enable();
-			else if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
-				consys_hw_vcn13_secondary_legacy_mode_enable();
+			WMT_PLAT_PR_INFO("Turn on VCN18, VCN13 in legacy mode\n");
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/* HW_OP_EN = 1, HW_OP_CFG = 1 */
+			KERNEL_pmic_ldo_vcn18_lp(SRCLKEN0, 1, 1, HW_LP);
+			/* SW_LP=0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN18_LP, 0);
+#else
+			if (g_regmap) {
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_EN_SET_ADDR, 1 << 0);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN18_OP_CFG_SET_ADDR, 1 << 0);
+				regmap_update_bits(g_regmap,
+					PMIC_RG_LDO_VCN18_LP_ADDR,
+					PMIC_RG_LDO_VCN18_LP_MASK << PMIC_RG_LDO_VCN18_LP_SHIFT,
+					0 << PMIC_RG_LDO_VCN18_LP_SHIFT);
+			}
+#endif
+			/*Set VCN18_SW_EN as 1 and set votage as 1V8*/
+			if (reg_VCN18) {
+				regulator_set_voltage(reg_VCN18, 1800000, 1800000);
+				if (regulator_enable(reg_VCN18))
+					WMT_PLAT_PR_ERR("enable VCN18 fail\n");
+				else
+					WMT_PLAT_PR_DBG("enable VCN18 ok\n");
+			}
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/* HW_OP_EN = 1, HW_OP_CFG = 1 */
+			KERNEL_pmic_ldo_vcn13_lp(SRCLKEN0, 1, 1, HW_LP);
+			/* SW_LP=0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN13_LP, 0);
+#else
+			if (g_regmap) {
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_EN_SET_ADDR, 1 << 0);
+				regmap_write(g_regmap, PMIC_RG_LDO_VCN13_OP_CFG_SET_ADDR, 1 << 0);
+				regmap_update_bits(g_regmap,
+					PMIC_RG_LDO_VCN13_LP_ADDR,
+					PMIC_RG_LDO_VCN13_LP_MASK << PMIC_RG_LDO_VCN13_LP_SHIFT,
+					0 << PMIC_RG_LDO_VCN13_LP_SHIFT);
+			}
+#endif
+			if (reg_VCN13) {
+				regulator_set_voltage(reg_VCN13, 1300000, 1300000);
+				if (regulator_enable(reg_VCN13))
+					WMT_PLAT_PR_ERR("enable VCN13 fail\n");
+				else
+					WMT_PLAT_PR_DBG("enable VCN13 ok\n");
+			}
 		}
 	} else {
-		if (mtk_wcn_consys_get_adie_chipid() == PRIMARY_ADIE) {
-			WMT_PLAT_PR_INFO("Turn off VCN33\n");
-			if (reg_VCN33_1_BT) {
-				if (regulator_disable(reg_VCN33_1_BT))
-					WMT_PLAT_PR_INFO("disable VCN33 fail!\n");
-			}
-		} else if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE) {
-			WMT_PLAT_PR_INFO("Turn off VCN13\n");
-			if (reg_VCN13) {
-				if (regulator_disable(reg_VCN13))
-					WMT_PLAT_PR_INFO("disable VCN13 fail!\n");
-			}
-		}
+		WMT_PLAT_PR_INFO("Turn off VCN13, VCN18\n");
+		if (reg_VCN13)
+			regulator_disable(reg_VCN13);
 		/* delay 300us */
 		udelay(300);
-
-		WMT_PLAT_PR_INFO("Turn off VCN18\n");
+		/*AP power off MT6351L VCN_1V8 LDO */
 		if (reg_VCN18) {
 			if (regulator_disable(reg_VCN18))
-				WMT_PLAT_PR_INFO("disable VCN18 fail!\n");
+				WMT_PLAT_PR_ERR("disable VCN_1V8 fail!\n");
+			else
+				WMT_PLAT_PR_DBG("disable VCN_1V8 ok\n");
 		}
 	}
 #endif
@@ -1528,95 +1480,10 @@ static VOID consys_vcn28_hw_mode_ctrl(UINT32 enable)
 	/* 6635 not supported */
 }
 
-static VOID consys_hw_vcn28_rc_mode(UINT32 enable)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (!g_regmap)
-		return;
-
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, enable << 7);
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 7);
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, enable << 4);
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 4);
-	if (wmt_plat_soc_co_clock_flag_get() == 0) {
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, enable << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, enable << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 5);
-	}
-
-	regmap_update_bits(g_regmap,
-		PMIC_RG_LDO_VCN33_2_LP_ADDR,
-		PMIC_RG_LDO_VCN33_2_LP_MASK << PMIC_RG_LDO_VCN33_2_LP_SHIFT,
-		0 << PMIC_RG_LDO_VCN33_2_LP_SHIFT);
-#else
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN7, 0, enable, HW_OFF);
-	KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN4, 0, enable, HW_OFF);
-	if (wmt_plat_soc_co_clock_flag_get() == 0) {
-		KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN6, 0, enable, HW_OFF);
-		KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN5, 0, enable, HW_OFF);
-	}
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_2_LP, 0);
-#endif
-}
-
-static VOID consys_hw_vcn28_legacy_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (!g_regmap)
-		return;
-
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 1 << 0);
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 0);
-	/* SW_LP =0 */
-	regmap_update_bits(g_regmap,
-		PMIC_RG_LDO_VCN33_2_LP_ADDR,
-		PMIC_RG_LDO_VCN33_2_LP_MASK << PMIC_RG_LDO_VCN33_2_LP_SHIFT,
-		0 << PMIC_RG_LDO_VCN33_2_LP_SHIFT);
-#else
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN0, 1, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_2_LP, 0);
-#endif
-}
-
 static INT32 consys_hw_vcn28_ctrl(UINT32 enable)
 {
-#if CONSYS_PMIC_CTRL_ENABLE
-	if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
-		/* 6635 not supported */
-		return 0;
+	/* 6635 not supported */
 
-	if (consys_is_rc_mode_enable()) {
-		WMT_PLAT_PR_INFO("Configure reg_VCN33_2 in RC mode\n");
-		consys_hw_vcn28_rc_mode(enable);
-
-		if (enable && reg_VCN33_2_WIFI)
-			regulator_set_voltage(reg_VCN33_2_WIFI, 2800000, 2800000);
-	} else {
-		if (enable) {
-			WMT_PLAT_PR_INFO("Turn on reg_VCN33_2_WIFI in legacy mode\n");
-			consys_hw_vcn28_legacy_mode_enable();
-
-			/*Set VCN33_1_SW_EN as 1 and set votage as 2.8V*/
-			if (reg_VCN33_2_WIFI) {
-				regulator_set_voltage(reg_VCN33_2_WIFI, 2800000, 2800000);
-				if (regulator_enable(reg_VCN33_2_WIFI))
-					WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-			}
-		} else {
-			if (reg_VCN33_2_WIFI) {
-				regulator_disable(reg_VCN33_2_WIFI);
-				WMT_PLAT_PR_INFO("turn off vcn33_2_WIFI\n");
-			}
-		}
-	}
-#endif
 	return 0;
 }
 
@@ -1646,377 +1513,294 @@ static INT32 consys_hw_set_vcn13_vcn18_lp_mode(INT8 lp_mode)
 	return 0;
 }
 
-static VOID consys_hw_bt_vcn33_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/* Set VS2 to 1.4625V */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_BUCK_VS2_VOSEL_ADDR,
-			PMIC_RG_BUCK_VS2_VOSEL_MASK << PMIC_RG_BUCK_VS2_VOSEL_SHIFT,
-			0x35 << PMIC_RG_BUCK_VS2_VOSEL_SHIFT);
-		/* request VS2 to 1.4625V by VS2 VOTER (use bit 4) */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_BUCK_VS2_VOTER_EN_SET_ADDR,
-			PMIC_RG_BUCK_VS2_VOTER_EN_SET_MASK << PMIC_RG_BUCK_VS2_VOTER_EN_SET_SHIFT,
-			0x10 << PMIC_RG_BUCK_VS2_VOTER_EN_SET_SHIFT);
-		/* Set VS2 sleep voltage to 1.375V */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_BUCK_VS2_VOSEL_SLEEP_ADDR,
-			PMIC_RG_BUCK_VS2_VOSEL_SLEEP_MASK << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT,
-			0x2e << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT);
-		/* Set VCN13 to 1.37V */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_VCN13_VOCAL_ADDR,
-			PMIC_RG_VCN13_VOCAL_MASK << PMIC_RG_VCN13_VOCAL_SHIFT,
-			0x7 << PMIC_RG_VCN13_VOCAL_SHIFT);
-	}
-#else
-	/* Set VS2 to 1.4625V */
-	KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOSEL, 0x35);
-	/* request VS2 to 1.4625V by VS2 VOTER (use bit 4) */
-	KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOTER_EN_SET, 0x10);
-	/* Set VS2 sleep voltage to 1.375V */
-	KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOSEL_SLEEP, 0x2e);
-	/* Set VCN13 to 1.37V */
-	KERNEL_pmic_set_register_value(PMIC_RG_VCN13_VOCAL, 0x7);
-#endif
-}
-
-static VOID consys_hw_bt_vcn33_rc_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/*  PMRC_EN[6][5]  HW_OP_EN = 1, HW_OP_CFG = 0  */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 5);
-		/* SW_LP =0 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_1_LP_ADDR,
-			PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-	}
-#else
-	/*  PMRC_EN[6][5]  HW_OP_EN = 1, HW_OP_CFG = 0  */
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN6, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN5, 0, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
-#endif
-}
-
-static VOID consys_hw_bt_vcn33_legacy_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 0);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
-		/* SW_LP =0 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_1_LP_ADDR,
-			PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-	}
-#else
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
-#endif
-}
-
-static VOID consys_hw_bt_vcn33_disable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/* restore VCN13 to 1.3V */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_VCN13_VOCAL_ADDR,
-			PMIC_RG_VCN13_VOCAL_MASK << PMIC_RG_VCN13_VOCAL_SHIFT,
-			0 << PMIC_RG_VCN13_VOCAL_SHIFT);
-		/* clear bit 4 of VS2 VOTER then VS2 can restore to 1.35V */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_BUCK_VS2_VOTER_EN_CLR_ADDR,
-			PMIC_RG_BUCK_VS2_VOTER_EN_CLR_MASK << PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT,
-			0x10 << PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT);
-		/* restore VS2 sleep voltage to 1.35V */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_BUCK_VS2_VOSEL_SLEEP_ADDR,
-			PMIC_RG_BUCK_VS2_VOSEL_SLEEP_MASK << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT,
-			0x2c << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT);
-	}
-	consys_hw_set_vcn13_vcn18_lp_mode(1);
-
-	if (consys_is_rc_mode_enable()) {
-		WMT_PLAT_PR_INFO("Do nothing for reg_VCN33_1_BT under RC mode when disable\n");
-	} else {
-		/*Set VCN33_1 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
-		if (g_regmap) {
-			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 0 << 0);
-			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
-		}
-		if (reg_VCN33_1_BT)
-			regulator_disable(reg_VCN33_1_BT);
-	}
-#else
-	/* restore VCN13 to 1.3V */
-	KERNEL_pmic_set_register_value(PMIC_RG_VCN13_VOCAL, 0);
-	/* clear bit 4 of VS2 VOTER then VS2 can restore to 1.35V */
-	KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOTER_EN_CLR, 0x10);
-	/* restore VS2 sleep voltage to 1.35V */
-	KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOSEL_SLEEP, 0x2c);
-
-	consys_hw_set_vcn13_vcn18_lp_mode(1);
-
-	if (consys_is_rc_mode_enable()) {
-		WMT_PLAT_PR_INFO("Do nothing for reg_VCN33_1_BT under RC mode when disable\n");
-	} else {
-		/*Set VCN33_1 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
-		KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 0, HW_OFF);
-		if (reg_VCN33_1_BT)
-			regulator_disable(reg_VCN33_1_BT);
-	}
-#endif
-}
-
 static INT32 consys_hw_bt_vcn33_ctrl(UINT32 enable)
 {
-#if CONSYS_PMIC_CTRL_ENABLE
-	if (mtk_wcn_consys_get_adie_chipid() != SECONDARY_ADIE)
-		/* 6631 not supported */
-		return 0;
 	if (enable) {
+#if CONSYS_PMIC_CTRL_ENABLE
 		/* Switch to ON mode to avoid OC */
 		consys_hw_set_vcn13_vcn18_lp_mode(0);
-		consys_hw_bt_vcn33_enable();
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+		/* Set VS2 to 1.4625V */
+		KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOSEL, 0x35);
+		/* request VS2 to 1.4625V by VS2 VOTER (use bit 4) */
+		KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOTER_EN_SET, 0x10);
+		/* Set VS2 sleep voltage to 1.375V */
+		KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOSEL_SLEEP, 0x2e);
+		/* Set VCN13 to 1.37V */
+		KERNEL_pmic_set_register_value(PMIC_RG_VCN13_VOCAL, 0x7);
+#else
+		if (g_regmap) {
+			/* Set VS2 to 1.4625V */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_BUCK_VS2_VOSEL_ADDR,
+				PMIC_RG_BUCK_VS2_VOSEL_MASK << PMIC_RG_BUCK_VS2_VOSEL_SHIFT,
+				0x35 << PMIC_RG_BUCK_VS2_VOSEL_SHIFT);
+			/* request VS2 to 1.4625V by VS2 VOTER (use bit 4) */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_BUCK_VS2_VOTER_EN_SET_ADDR,
+				PMIC_RG_BUCK_VS2_VOTER_EN_SET_MASK << PMIC_RG_BUCK_VS2_VOTER_EN_SET_SHIFT,
+				0x10 << PMIC_RG_BUCK_VS2_VOTER_EN_SET_SHIFT);
+			/* Set VS2 sleep voltage to 1.375V */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_BUCK_VS2_VOSEL_SLEEP_ADDR,
+				PMIC_RG_BUCK_VS2_VOSEL_SLEEP_MASK << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT,
+				0x2e << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT);
+			/* Set VCN13 to 1.37V */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_VCN13_VOCAL_ADDR,
+				PMIC_RG_VCN13_VOCAL_MASK << PMIC_RG_VCN13_VOCAL_SHIFT,
+				0x7 << PMIC_RG_VCN13_VOCAL_SHIFT);
+		}
+#endif
 		consys_hw_set_vcn13_vcn18_lp_mode(1);
 
 		if (consys_is_rc_mode_enable()) {
 			WMT_PLAT_PR_INFO("Turn on reg_VCN33_1_BT in RC mode\n");
-			consys_hw_bt_vcn33_rc_mode_enable();
-			if (reg_VCN33_1_BT)
-				regulator_set_voltage(reg_VCN33_1_BT, VCN33_1_VOL, VCN33_1_VOL);
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*  PMRC_EN[6][5]  HW_OP_EN = 1, HW_OP_CFG = 0  */
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN6, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN5, 0, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 6);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 6);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 5);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 5);
+			regmap_update_bits(g_regmap,
+				PMIC_RG_LDO_VCN33_1_LP_ADDR,
+				PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
+				0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
+		}
+#endif
+			regulator_set_voltage(reg_VCN33_1_BT, 3300000, 3300000);
+			/* SW_EN=0 */
+			/* For RC mode, we don't have to control VCN33_1 & VCN33_2 */
+			/* regulator_disable(reg_VCN33_1_BT); */
 		} else {
 			WMT_PLAT_PR_INFO("Turn on reg_VCN33_1_BT in legacy mode\n");
-			consys_hw_bt_vcn33_legacy_mode_enable();
-
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/* HW_OP_EN = 1, HW_OP_CFG = 0 */
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 0);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
+			regmap_update_bits(g_regmap,
+				PMIC_RG_LDO_VCN33_1_LP_ADDR,
+				PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
+				0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
+		}
+#endif
 			/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
-			if (reg_VCN33_1_BT) {
-				regulator_set_voltage(reg_VCN33_1_BT, VCN33_1_VOL, VCN33_1_VOL);
+			if (reg_VCN33_1_WIFI) {
+				regulator_set_voltage(reg_VCN33_1_BT, 3300000, 3300000);
 				if (regulator_enable(reg_VCN33_1_BT))
-					WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
+					WMT_PLAT_PR_ERR("WMT do WIFI PMIC on fail!\n");
 			}
 		}
+#endif
 		WMT_PLAT_PR_DBG("WMT do BT PMIC on\n");
 	} else {
 		/*do BT PMIC off */
+#if CONSYS_PMIC_CTRL_ENABLE
 		consys_hw_set_vcn13_vcn18_lp_mode(0);
-		consys_hw_bt_vcn33_disable();
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+		/* restore VCN13 to 1.3V */
+		KERNEL_pmic_set_register_value(PMIC_RG_VCN13_VOCAL, 0);
+		/* clear bit 4 of VS2 VOTER then VS2 can restore to 1.35V */
+		KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOTER_EN_CLR, 0x10);
+		/* restore VS2 sleep voltage to 1.35V */
+		KERNEL_pmic_set_register_value(PMIC_RG_BUCK_VS2_VOSEL_SLEEP, 0x2c);
+#else
+		if (g_regmap) {
+			/* restore VCN13 to 1.3V */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_VCN13_VOCAL_ADDR,
+				PMIC_RG_VCN13_VOCAL_MASK << PMIC_RG_VCN13_VOCAL_SHIFT,
+				0 << PMIC_RG_VCN13_VOCAL_SHIFT);
+			/* clear bit 4 of VS2 VOTER then VS2 can restore to 1.35V */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_BUCK_VS2_VOTER_EN_CLR_ADDR,
+				PMIC_RG_BUCK_VS2_VOTER_EN_CLR_MASK << PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT,
+				0x10 << PMIC_RG_BUCK_VS2_VOTER_EN_CLR_SHIFT);
+			/* restore VS2 sleep voltage to 1.35V */
+			regmap_update_bits(g_regmap,
+				PMIC_RG_BUCK_VS2_VOSEL_SLEEP_ADDR,
+				PMIC_RG_BUCK_VS2_VOSEL_SLEEP_MASK << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT,
+				0x2c << PMIC_RG_BUCK_VS2_VOSEL_SLEEP_SHIFT);
+		}
+#endif
+		consys_hw_set_vcn13_vcn18_lp_mode(1);
+
+		if (consys_is_rc_mode_enable()) {
+			WMT_PLAT_PR_INFO("Do nothing for reg_VCN33_1_BT under RC mode when disable\n");
+		} else {
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*Set VCN33_1 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 0, HW_OFF);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 0 << 0);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
+		}
+#endif
+			if (reg_VCN33_1_BT)
+				regulator_disable(reg_VCN33_1_BT);
+		}
+#endif
 		WMT_PLAT_PR_DBG("WMT do BT PMIC off\n");
 	}
-#endif
+
 	return 0;
-}
-
-static VOID consys_hw_wifi_vcn33_rc_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 5);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 5);
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_1_LP_ADDR,
-			PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-
-		regulator_set_voltage(reg_VCN33_1_WIFI, VCN33_1_VOL, VCN33_1_VOL);
-
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 1 << 6);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 6);
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_2_LP_ADDR,
-			PMIC_RG_LDO_VCN33_2_LP_MASK << PMIC_RG_LDO_VCN33_2_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_2_LP_SHIFT);
-
-		regulator_set_voltage(reg_VCN33_2_WIFI, 3300000, 3300000);
-	}
-#else
-	/*  PMRC_EN[6][5]  HW_OP_EN = 1, HW_OP_CFG = 0  */
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN6, 0, 1, HW_OFF);
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN5, 0, 1, HW_OFF);
-
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
-
-	regulator_set_voltage(reg_VCN33_1_WIFI, VCN33_1_VOL, VCN33_1_VOL);
-
-	/*  PMRC_EN[6]  HW_OP_EN = 1, HW_OP_CFG = 0  */
-	KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN6, 0, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_2_LP, 0);
-	regulator_set_voltage(reg_VCN33_2_WIFI, 3300000, 3300000);
-#endif
-}
-
-static VOID consys_hw_wifi_vcn33_legacy_mode_enable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (g_regmap) {
-		/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 0);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
-		/* SW_LP =0 */
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_1_LP_ADDR,
-			PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-
-		/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
-		if (reg_VCN33_1_WIFI) {
-			regulator_set_voltage(reg_VCN33_1_WIFI, VCN33_1_VOL, VCN33_1_VOL);
-			if (regulator_enable(reg_VCN33_1_WIFI))
-				WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-		}
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 1 << 0);
-		regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 0);
-		regmap_update_bits(g_regmap,
-			PMIC_RG_LDO_VCN33_2_LP_ADDR,
-			PMIC_RG_LDO_VCN33_2_LP_MASK << PMIC_RG_LDO_VCN33_2_LP_SHIFT,
-			0 << PMIC_RG_LDO_VCN33_2_LP_SHIFT);
-		/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
-		if (reg_VCN33_2_WIFI) {
-			regulator_set_voltage(reg_VCN33_2_WIFI, 3300000, 3300000);
-			if (regulator_enable(reg_VCN33_2_WIFI))
-				WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-		}
-
-	}
-#else
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
-
-	/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
-	if (reg_VCN33_1_WIFI) {
-		regulator_set_voltage(reg_VCN33_1_WIFI, VCN33_1_VOL, VCN33_1_VOL);
-		if (regulator_enable(reg_VCN33_1_WIFI))
-			WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-	}
-	/* HW_OP_EN = 1, HW_OP_CFG = 0 */
-	KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN0, 1, 1, HW_OFF);
-	/* SW_LP =0 */
-	KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_2_LP, 0);
-
-	/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
-	if (reg_VCN33_2_WIFI) {
-		regulator_set_voltage(reg_VCN33_2_WIFI, 3300000, 3300000);
-		if (regulator_enable(reg_VCN33_2_WIFI))
-			WMT_PLAT_PR_INFO("WMT do WIFI PMIC on fail!\n");
-	}
-#endif
-}
-
-static VOID consys_hw_wifi_vcn33_legacy_mode_disable(VOID)
-{
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (!g_regmap)
-		return;
-	/*Set VCN33_1 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 0 << 0);
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
-	if (reg_VCN33_1_WIFI)
-		regulator_disable(reg_VCN33_1_WIFI);
-
-	/*Set VCN33_2 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 0 << 0);
-	regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 0);
-	if (reg_VCN33_2_WIFI)
-		regulator_disable(reg_VCN33_2_WIFI);
-#else
-	/*Set VCN33_1 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
-	KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 0, HW_OFF);
-	if (reg_VCN33_1_WIFI)
-		regulator_disable(reg_VCN33_1_WIFI);
-
-	/*Set VCN33_2 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
-	KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN0, 1, 0, HW_OFF);
-	if (reg_VCN33_2_WIFI)
-		regulator_disable(reg_VCN33_2_WIFI);
-#endif
 }
 
 static INT32 consys_hw_wifi_vcn33_ctrl(UINT32 enable)
 {
-#if CONSYS_PMIC_CTRL_ENABLE
-	if (mtk_wcn_consys_get_adie_chipid() != SECONDARY_ADIE)
-		/* 6631 not supported */
-		return 0;
 	if (enable) {
+#if CONSYS_PMIC_CTRL_ENABLE
 		if (consys_is_rc_mode_enable()) {
 			WMT_PLAT_PR_INFO("Turn on reg_VCN33_1_WIFI in RC mode\n");
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*  PMRC_EN[6][5]  HW_OP_EN = 1, HW_OP_CFG = 0  */
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN6, 0, 1, HW_OFF);
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN5, 0, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 6);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 6);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 5);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 5);
+			regmap_update_bits(g_regmap,
+				PMIC_RG_LDO_VCN33_1_LP_ADDR,
+				PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
+				0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
+		}
+#endif
+			regulator_set_voltage(reg_VCN33_1_WIFI, 3300000, 3300000);
+			/* SW_EN=0 */
+			/* For RC mode, we don't have to control VCN33_1 & VCN33_2 */
+			/* regulator_disable(reg_VCN33_1_WIFI); */
+
 			WMT_PLAT_PR_INFO("Turn on reg_VCN33_2_WIFI in RC mode\n");
-			consys_hw_wifi_vcn33_rc_mode_enable();
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*  PMRC_EN[6]  HW_OP_EN = 1, HW_OP_CFG = 0  */
+			KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN6, 0, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_2_LP, 0);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 1 << 6);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 6);
+			regmap_update_bits(g_regmap,
+				PMIC_RG_LDO_VCN33_2_LP_ADDR,
+				PMIC_RG_LDO_VCN33_2_LP_MASK << PMIC_RG_LDO_VCN33_2_LP_SHIFT,
+				0 << PMIC_RG_LDO_VCN33_2_LP_SHIFT);
+		}
+#endif
+			regulator_set_voltage(reg_VCN33_2_WIFI, 3300000, 3300000);
+			/* SW_EN=0 */
+			/* For RC mode, we don't have to control VCN33_1 & VCN33_2 */
+			/* regulator_disable(reg_VCN33_2_WIFI); */
 		} else {
 			WMT_PLAT_PR_INFO("Turn on reg_VCN33_1_WIFI in legacy mode\n");
-			consys_hw_wifi_vcn33_legacy_mode_enable();
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/* HW_OP_EN = 1, HW_OP_CFG = 0 */
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 0);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 1 << 0);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
+			regmap_update_bits(g_regmap,
+				PMIC_RG_LDO_VCN33_1_LP_ADDR,
+				PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
+				0 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
 		}
+#endif
+			/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
+			if (reg_VCN33_1_WIFI) {
+				regulator_set_voltage(reg_VCN33_1_WIFI, 3300000, 3300000);
+				if (regulator_enable(reg_VCN33_1_WIFI))
+					WMT_PLAT_PR_ERR("WMT do WIFI PMIC on fail!\n");
+			}
+
+			WMT_PLAT_PR_INFO("Turn on reg_VCN33_2_WIFI in legacy mode\n");
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/* HW_OP_EN = 1, HW_OP_CFG = 0 */
+			KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN0, 1, 1, HW_OFF);
+			/* SW_LP =0 */
+			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_2_LP, 0);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 1 << 0);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 0);
+			regmap_update_bits(g_regmap,
+				PMIC_RG_LDO_VCN33_2_LP_ADDR,
+				PMIC_RG_LDO_VCN33_2_LP_MASK << PMIC_RG_LDO_VCN33_2_LP_SHIFT,
+				0 << PMIC_RG_LDO_VCN33_2_LP_SHIFT);
+		}
+#endif
+			/*Set VCN33_1_SW_EN as 1 and set votage as 3V3*/
+			if (reg_VCN33_2_WIFI) {
+				regulator_set_voltage(reg_VCN33_2_WIFI, 3300000, 3300000);
+				if (regulator_enable(reg_VCN33_2_WIFI))
+					WMT_PLAT_PR_ERR("WMT do WIFI PMIC on fail!\n");
+			}
+		}
+#endif
 		WMT_PLAT_PR_DBG("WMT do WIFI PMIC on\n");
 	} else {
 		/*do WIFI PMIC off */
 		/*switch WIFI PALDO control from HW mode to SW mode:0x418[14]-->0x0 */
-		if (consys_is_rc_mode_enable())
+#if CONSYS_PMIC_CTRL_ENABLE
+		if (consys_is_rc_mode_enable()) {
 			WMT_PLAT_PR_INFO("Do nothing for VCN33_1 under RC mode when disable\n");
-		else
-			consys_hw_wifi_vcn33_legacy_mode_disable();
+		} else {
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*Set VCN33_1 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
+			KERNEL_pmic_ldo_vcn33_1_lp(SRCLKEN0, 1, 0, HW_OFF);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_EN_SET_ADDR, 0 << 0);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_1_OP_CFG_SET_ADDR, 0 << 0);
+		}
+#endif
+			if (reg_VCN33_1_WIFI)
+				regulator_disable(reg_VCN33_1_WIFI);
+#if (!COMMON_KERNEL_PMIC_SUPPORT)
+			/*Set VCN33_2 as low-power mode(1), HW0_OP_EN as 0, HW0_OP_CFG as HW_OFF(0)*/
+			KERNEL_pmic_ldo_vcn33_2_lp(SRCLKEN0, 1, 0, HW_OFF);
+#else
+		if (g_regmap) {
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_EN_SET_ADDR, 0 << 0);
+			regmap_write(g_regmap, PMIC_RG_LDO_VCN33_2_OP_CFG_SET_ADDR, 0 << 0);
+		}
+#endif
+			if (reg_VCN33_2_WIFI)
+				regulator_disable(reg_VCN33_2_WIFI);
+		}
+#endif
 		WMT_PLAT_PR_DBG("WMT do WIFI PMIC off\n");
 	}
-#endif
+
 	return 0;
 }
 
 static INT32 consys_hw_vcn_ctrl_after_idle(VOID)
 {
-#if (COMMON_KERNEL_PMIC_SUPPORT)
-	if (consys_is_rc_mode_enable() && g_regmap) {
-		regmap_update_bits(g_regmap,
-		PMIC_RG_LDO_VCN18_LP_ADDR,
-		PMIC_RG_LDO_VCN18_LP_MASK << PMIC_RG_LDO_VCN18_LP_SHIFT,
-			1 << PMIC_RG_LDO_VCN18_LP_SHIFT);
-
-		if (mtk_wcn_consys_get_adie_chipid() == PRIMARY_ADIE) {
-			regmap_update_bits(g_regmap,
-				PMIC_RG_LDO_VCN33_1_LP_ADDR,
-				PMIC_RG_LDO_VCN33_1_LP_MASK << PMIC_RG_LDO_VCN33_1_LP_SHIFT,
-				1 << PMIC_RG_LDO_VCN33_1_LP_SHIFT);
-		} else if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE) {
-			regmap_update_bits(g_regmap,
-				PMIC_RG_LDO_VCN13_LP_ADDR,
-				PMIC_RG_LDO_VCN13_LP_MASK << PMIC_RG_LDO_VCN13_LP_SHIFT,
-				1 << PMIC_RG_LDO_VCN13_LP_SHIFT);
-		}
-	}
-#else
-	if (consys_is_rc_mode_enable()) {
-		KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN18_LP, 1);
-
-		if (mtk_wcn_consys_get_adie_chipid() == PRIMARY_ADIE)
-			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN33_1_LP, 1);
-		else if (mtk_wcn_consys_get_adie_chipid() == SECONDARY_ADIE)
-			KERNEL_pmic_set_register_value(PMIC_RG_LDO_VCN13_LP, 1);
-	}
-#endif
+	consys_hw_set_vcn13_vcn18_lp_mode(1);
 	return 0;
 }
 
 static INT32 consys_emi_mpu_set_region_protection(VOID)
 {
-#if CONSYS_ENABLE_EMI_MPU
 	struct emimpu_region_t region;
 	unsigned long long start = gConEmiPhyBase;
 	unsigned long long end = gConEmiPhyBase + gConEmiSize - 1;
@@ -2029,7 +1813,6 @@ static INT32 consys_emi_mpu_set_region_protection(VOID)
 	mtk_emimpu_free_region(&region);
 
 	WMT_PLAT_PR_INFO("setting MPU for EMI share memory\n");
-#endif
 	return 0;
 }
 
@@ -2102,7 +1885,7 @@ static INT32 consys_read_irq_info_from_dts(struct platform_device *pdev, PINT32 
 		WMT_PLAT_PR_INFO("get irq id(%d) and irq trigger flag(%d) from DT\n", *irq_num,
 				   *irq_flag);
 	} else {
-		WMT_PLAT_PR_INFO("[%s] can't find CONSYS compatible node\n", __func__);
+		WMT_PLAT_PR_ERR("[%s] can't find CONSYS compatible node\n", __func__);
 		return -1;
 	}
 
@@ -2137,11 +1920,8 @@ static INT32 consys_read_reg_from_dts(struct platform_device *pdev)
 		conn_reg.mcu_cirq_base = (SIZE_T) of_iomap(node, MCU_CIRQ_BASE_INDEX);
 		WMT_PLAT_PR_DBG("Get mcu cirq  register base(0x%zx)\n", conn_reg.mcu_cirq_base);
 		conn_reg.mcu_top_misc_on_base = (SIZE_T) of_iomap(node, MCU_TOP_MISC_ON_BASE_INDEX);
-		WMT_PLAT_PR_DBG("Get mcu_top_misc_on register base(0x%zx)\n",
+		WMT_PLAT_PR_DBG("Get mcu_top_misc_off register base(0x%zx)\n",
 				conn_reg.mcu_top_misc_on_base);
-		conn_reg.mcu_conn_hif_pdma_base = (SIZE_T) of_iomap(node, MCU_CONN_HIF_PDMA_BASE_INDEX);
-		WMT_PLAT_PR_DBG("Get mcu_conn_hif_pdma register base(0x%zx)\n",
-				conn_reg.mcu_conn_hif_pdma_base);
 		conn_reg.ap_pccif4_base = (SIZE_T) of_iomap(node, AP_PCCIF4_BASE_INDEX);
 		WMT_PLAT_PR_DBG("Get ap_pccif4 register base(0x%zx)\n",
 				conn_reg.ap_pccif4_base);
@@ -2149,7 +1929,7 @@ static INT32 consys_read_reg_from_dts(struct platform_device *pdev)
 		WMT_PLAT_PR_DBG("Get infra_ao_pericfg register base(0x%zx)\n",
 				conn_reg.infra_ao_pericfg_base);
 	} else {
-		WMT_PLAT_PR_INFO("[%s] can't find CONSYS compatible node\n", __func__);
+		WMT_PLAT_PR_ERR("[%s] can't find CONSYS compatible node\n", __func__);
 		return iRet;
 	}
 
@@ -2201,9 +1981,6 @@ static UINT32 consys_read_cpupcr(VOID)
 	if (conn_reg.mcu_conn_hif_on_base == 0)
 		return 0;
 
-	if (mtk_consys_check_reg_readable_by_addr(conn_reg.mcu_conn_hif_on_base + CONSYS_CPUPCR_OFFSET) == 0)
-		return 0;
-
 	return CONSYS_REG_READ(conn_reg.mcu_conn_hif_on_base + CONSYS_CPUPCR_OFFSET);
 }
 
@@ -2238,117 +2015,6 @@ static INT32 consys_poll_cpupcr_dump(UINT32 times, UINT32 sleep_ms)
 static UINT32 consys_soc_chipid_get(VOID)
 {
 	return PLATFORM_SOC_CHIP;
-}
-
-static UINT32 consys_adie_chipid_checking_flow(UINT32 adie)
-{
-	UINT8 *conn_rf_spi_base = NULL;
-	UINT32 chipid = 0;
-	UINT32 retry = 10;
-
-	conn_rf_spi_base = ioremap(CONN_RF_SPI_BASE, 0x100);
-	if (!conn_rf_spi_base) {
-		WMT_PLAT_PR_INFO("ioumap 0x180c6000 fail");
-		return 0;
-	}
-
-	if (reg_VCN18) {
-		regulator_set_voltage(reg_VCN18, 1800000, 1800000);
-		if (regulator_enable(reg_VCN18))
-			WMT_PLAT_PR_INFO("enable VCN18 fail\n");
-		else
-			WMT_PLAT_PR_DBG("enable VCN18 ok\n");
-	}
-	udelay(300);
-	if ((reg_VCN13) && (adie == SECONDARY_ADIE)) {
-		regulator_set_voltage(reg_VCN13, 1300000, 1300000);
-		if (regulator_enable(reg_VCN13))
-			WMT_PLAT_PR_INFO("enable VCN13 fail\n");
-		else
-			WMT_PLAT_PR_DBG("enable VCN13 ok\n");
-	}
-	if (wmt_plat_soc_co_clock_flag_get() == 0)
-		consys_hw_vcn28_ctrl(ENABLE);
-	consys_set_if_pinmux(ENABLE);
-	udelay(150);
-	consys_hw_reset_bit_set(ENABLE);
-	consys_hw_spm_clk_gating_enable();
-	consys_hw_power_ctrl(ENABLE);
-	udelay(10);
-	polling_consys_chipid();
-	consys_set_access_emi_hw_mode();
-	consys_afe_reg_setting();
-	consys_set_xo_osc_ctrl();
-
-	CONSYS_REG_WRITE(conn_reg.mcu_top_misc_on_base + CONN_ON_ADIE_CTL_OFFSET,
-			CONSYS_REG_READ(conn_reg.mcu_top_misc_on_base + CONN_ON_ADIE_CTL_OFFSET)
-			| 0x1);
-
-	while (retry-- > 0) {
-		if ((CONSYS_REG_READ(conn_rf_spi_base) & 0x1) == 0)
-			break;
-		udelay(500);
-	}
-
-	if (adie == PRIMARY_ADIE)
-		CONSYS_REG_WRITE(conn_rf_spi_base + SPI_TOP_ADDR, 0x0000b024);
-	else if (adie == SECONDARY_ADIE)
-		CONSYS_REG_WRITE(conn_rf_spi_base + SPI_TOP_ADDR, 0x0000b02C);
-	CONSYS_REG_WRITE(conn_rf_spi_base + SPI_TOP_WDAT, 0);
-
-	retry = 10;
-	while (retry-- > 0) {
-		if ((CONSYS_REG_READ(conn_rf_spi_base) & 0x20) == 0)
-			break;
-		udelay(500);
-	}
-
-	chipid = CONSYS_REG_READ(conn_rf_spi_base + SPI_TOP_RDAT) >> 16;
-
-	CONSYS_REG_WRITE(conn_reg.mcu_top_misc_on_base + CONN_ON_ADIE_CTL_OFFSET,
-			CONSYS_REG_READ(conn_reg.mcu_top_misc_on_base + CONN_ON_ADIE_CTL_OFFSET)
-			& 0x0);
-
-	iounmap(conn_rf_spi_base);
-
-	consys_hw_power_ctrl(DISABLE);
-	consys_set_if_pinmux(DISABLE);
-	if (wmt_plat_soc_co_clock_flag_get() == 0)
-		consys_hw_vcn28_ctrl(DISABLE);
-
-	if ((reg_VCN13) && (adie == SECONDARY_ADIE)) {
-		if (regulator_disable(reg_VCN13))
-			WMT_PLAT_PR_INFO("disable VCN13 fail!\n");
-	}
-	udelay(300);
-	if (reg_VCN18) {
-		if (regulator_disable(reg_VCN18))
-			WMT_PLAT_PR_INFO("disable VCN18 fail!\n");
-	}
-
-	if ((reg_VCN13) && (chipid == PRIMARY_ADIE)) {
-		/* release VCN13 resource if never used to prevent customerized issue */
-		regulator_put(reg_VCN13);
-		reg_VCN13 = NULL;
-	}
-
-	return chipid;
-}
-
-static INT32 consys_adie_chipid_detect(VOID)
-{
-	INT32 chipid = -1;
-	UINT32 retry = 3;
-
-	while ((retry-- > 0) && (chipid == -1)) {
-		if (consys_adie_chipid_checking_flow(PRIMARY_ADIE) == PRIMARY_ADIE)
-			chipid = PRIMARY_ADIE;
-		else if (consys_adie_chipid_checking_flow(SECONDARY_ADIE) == SECONDARY_ADIE)
-			chipid = SECONDARY_ADIE;
-	}
-	WMT_PLAT_PR_INFO("A-die chip id = %x\n", chipid);
-
-	return chipid;
 }
 
 static P_CONSYS_EMI_ADDR_INFO consys_soc_get_emi_phy_add(VOID)
@@ -2415,9 +2081,10 @@ static INT32 consys_dedicated_log_path_init(struct platform_device *pdev)
 		WMT_PLAT_PR_INFO("get conn2ap_sw_irq id(%d) and irq trigger flag(%d) from DT\n",
 				irq_num, irq_flag);
 	} else {
-		WMT_PLAT_PR_INFO("[%s] can't find CONSYS compatible node\n", __func__);
+		WMT_PLAT_PR_ERR("[%s] can't find CONSYS compatible node\n", __func__);
 		return iret;
 	}
+
 	osal_unsleepable_lock_init(&g_pwr_off_lock);
 
 	irq_config.irq_num = irq_num;
@@ -2426,7 +2093,6 @@ static INT32 consys_dedicated_log_path_init(struct platform_device *pdev)
 
 	connsys_dedicated_log_path_apsoc_init(
 		gConEmiPhyBase, &connsys_fw_log_parameter, &irq_config);
-
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 	fw_log_wmt_init();
 #endif
@@ -2453,7 +2119,7 @@ static INT32 consys_emi_coredump_remapping(UINT8 __iomem **addr, UINT32 enable)
 					CONSYS_EMI_COREDUMP_OFFSET);
 			memset_io(*addr, 0, CONSYS_EMI_COREDUMP_MEM_SIZE);
 		} else {
-			WMT_PLAT_PR_INFO("EMI mapping fail\n");
+			WMT_PLAT_PR_ERR("EMI mapping fail\n");
 			return -1;
 		}
 	} else {
@@ -2468,7 +2134,7 @@ static INT32 consys_emi_coredump_remapping(UINT8 __iomem **addr, UINT32 enable)
 static INT32 consys_reset_emi_coredump(UINT8 __iomem *addr)
 {
 	if (!addr) {
-		WMT_PLAT_PR_INFO("get virtual address fail\n");
+		WMT_PLAT_PR_ERR("get virtual address fail\n");
 		return -1;
 	}
 	WMT_PLAT_PR_INFO("Reset EMI(0xF0068000 ~ 0xF0107FFF)\n");
@@ -2493,113 +2159,125 @@ static INT32 consys_check_reg_readable(VOID)
 	}
 
 	if (!can_read)
-		WMT_PLAT_PR_INFO("connsys clock check fail 0x18007000(0x%x)\n", value);
+		WMT_PLAT_PR_ERR("connsys clock check fail 0x18007000(0x%x)\n", value);
 
 	return can_read;
 }
 
 static VOID consys_ic_clock_fail_dump(VOID)
 {
-#if 0
-	UINT8 *addr;
-#endif
-	char *temp;
-	char buffer[1024] = {""};
+	UINT8 *addr = NULL;
+	char *buffer = NULL, *temp = NULL;
+	INT32 size = 1024;
 
-	if (conn_reg.mcu_base == 0 ||
-			conn_reg.mcu_conn_hif_pdma_base == 0 ||
-			conn_reg.mcu_conn_hif_on_base == 0)
+	if (conn_reg.mcu_base == 0)
+		return;
+
+	/* make sure buffer size is big enough */
+	buffer = osal_malloc(size);
+	if (!buffer)
 		return;
 
 	temp = buffer;
 	temp += sprintf(temp, "CONN_HIF_TOP_MISC=0x%08x CONN_HIF_BUSY_STATUS=0x%08x\n",
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_TOP_MISC),
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_BUSY_STATUS));
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_TOP_MISC),
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_BUSY_STATUS));
 
-	CONSYS_REG_WRITE(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_IDX, 0x3333);
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_HIF_DBG_IDX, 0x3333);
 	temp += sprintf(temp, "Write CONSYS_HIF_DBG_IDX to 0x3333\n");
 
 	temp += sprintf(temp, "CONSYS_HIF_DBG_PROBE=0x%08x CONN_HIF_TOP_MISC=0x%08x\n",
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_PROBE),
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_TOP_MISC));
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_DBG_PROBE),
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_TOP_MISC));
 
 	temp += sprintf(temp, "CONN_HIF_BUSY_STATUS=0x%08x CONN_HIF_PDMA_BUSY_STATUS=0x%08x\n",
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_BUSY_STATUS),
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_PDMA_BUSY_STATUS));
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_BUSY_STATUS),
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_PDMA_BUSY_STATUS));
 
-	CONSYS_REG_WRITE(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_IDX, 0x2222);
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_HIF_DBG_IDX, 0x2222);
 	temp += sprintf(temp, "Write CONSYS_HIF_DBG_IDX to 0x2222\n");
 
 	temp += sprintf(temp, "CONSYS_HIF_DBG_PROBE=0x%08x\n",
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_PROBE));
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_DBG_PROBE));
 
-	CONSYS_REG_WRITE(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_IDX, 0x3333);
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_HIF_DBG_IDX, 0x3333);
 	temp += sprintf(temp, "Write CONSYS_HIF_DBG_IDX to 0x3333\n");
 
 	temp += sprintf(temp, "CONSYS_HIF_DBG_PROBE=0x%08x\n",
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_PROBE));
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_DBG_PROBE));
 
-	CONSYS_REG_WRITE(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_IDX, 0x4444);
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_HIF_DBG_IDX, 0x4444);
 	temp += sprintf(temp, "Write CONSYS_HIF_DBG_IDX to 0x4444\n");
 
 	temp += sprintf(temp, "CONSYS_HIF_DBG_PROBE=0x%08x CONN_MCU_EMI_CONTROL=0x%08x\n",
-		CONSYS_REG_READ(conn_reg.mcu_conn_hif_pdma_base + CONSYS_HIF_DBG_PROBE),
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_HIF_DBG_PROBE),
 		CONSYS_REG_READ(conn_reg.mcu_base + CONN_MCU_EMI_CONTROL));
 	temp += sprintf(temp, "EMI_CONTROL_DBG_PROBE=0x%08x\n",
 		CONSYS_REG_READ(conn_reg.mcu_base + EMI_CONTROL_DBG_PROBE));
 	temp += sprintf(temp, "CONN_MCU_CLOCK_CONTROL=0x%08x CONN_MCU_BUS_CONTROL=0x%08x\n",
 		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_CLOCK_CONTROL),
 		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_BUS_CONTROL));
-#if 0
+
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_DEBUG_SELECT, 0x003e3d00);
+	temp += sprintf(temp, "Write CONSYS_DEBUG_SELECT to 0x003e3d00\n");
+
+	temp += sprintf(temp, "CONN_MCU_DEBUG_STATUS=0x%08x\n",
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_DEBUG_STATUS));
+
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_DEBUG_SELECT, 0x00403f00);
+	temp += sprintf(temp, "Write CONSYS_DEBUG_SELECT to 0x00403f00\n");
+
+	temp += sprintf(temp, "CONN_MCU_DEBUG_STATUS=0x%08x\n",
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_DEBUG_STATUS));
+
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_DEBUG_SELECT, 0x00424100);
+	temp += sprintf(temp, "Write CONSYS_DEBUG_SELECT to 0x00424100\n");
+
+	temp += sprintf(temp, "CONN_MCU_DEBUG_STATUS=0x%08x\n",
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_DEBUG_STATUS));
+
+	CONSYS_REG_WRITE(conn_reg.mcu_base + CONSYS_DEBUG_SELECT, 0x00444300);
+	temp += sprintf(temp, "Write CONSYS_DEBUG_SELECT to 0x00444300\n");
+
+	temp += sprintf(temp, "CONN_MCU_DEBUG_STATUS=0x%08x\n",
+		CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_DEBUG_STATUS));
+	WMT_PLAT_PR_ERR("%s length = %d", buffer, osal_strlen(buffer));
+
 	temp = buffer;
 	addr = ioremap(0x180bc000, 0x100);
-	if (addr) {
-		/* conn2ap axi master sleep prot info */
-		temp += sprintf(temp, "0x180bc010=0x%08x\n", CONSYS_REG_READ(addr + 0x10));
-		/* conn_mcu2ap axi master sleep prot info */
-		temp += sprintf(temp, "0x180bc014=0x%08x\n", CONSYS_REG_READ(addr + 0x14));
-		/* conn2ap axi gals bus info */
-		temp += sprintf(temp, "0x180bc018=0x%08x\n", CONSYS_REG_READ(addr + 0x18));
-		/* conn2ap mux4to1 debug info */
-		temp += sprintf(temp, "0x180bc01c=0x%08x\n", CONSYS_REG_READ(addr + 0x1c));
-		/* conn_hif_off bus busy info */
-		temp += sprintf(temp, "0x180bc020=0x%08x\n", CONSYS_REG_READ(addr + 0x20));
-		iounmap(addr);
-	} else {
-		WMT_PLAT_PR_INFO("0x180bc000 ioremap fail!\n");
-	}
+	/* conn2ap axi master sleep prot info */
+	temp += sprintf(temp, "0x180bc010=0x%08x\n", CONSYS_REG_READ(addr + 0x10));
+	/* conn_mcu2ap axi master sleep prot info */
+	temp += sprintf(temp, "0x180bc014=0x%08x\n", CONSYS_REG_READ(addr + 0x14));
+	/* conn2ap axi gals bus info */
+	temp += sprintf(temp, "0x180bc018=0x%08x\n", CONSYS_REG_READ(addr + 0x18));
+	/* conn2ap mux4to1 debug info */
+	temp += sprintf(temp, "0x180bc01c=0x%08x\n", CONSYS_REG_READ(addr + 0x1c));
+	/* conn_hif_off bus busy info */
+	temp += sprintf(temp, "0x180bc020=0x%08x\n", CONSYS_REG_READ(addr + 0x20));
+	iounmap(addr);
 
 	addr = ioremap(0x10001B20, 0x100);
-	if (addr) {
-		/* 0x10001B20 */
-		temp += sprintf(temp, "0x10001B20=0x%08x\n", CONSYS_REG_READ(addr));
-		iounmap(addr);
-	} else {
-		WMT_PLAT_PR_INFO("0x10001B20 ioremap fail!\n");
-	}
+	/* 0x1020E804 */
+	temp += sprintf(temp, "0x10001B20=0x%08x\n", CONSYS_REG_READ(addr));
 
+	addr = ioremap(0x1800713c, 0x100);
 	/* conn_hif_on misc info */
-	temp += sprintf(temp, "0x1800713c=0x%08x\n", CONSYS_REG_READ(conn_reg.mcu_conn_hif_on_base + 0x13c));
+	temp += sprintf(temp, "0x1800713c=0x%08x\n", CONSYS_REG_READ(addr));
+	iounmap(addr);
 
 	addr = ioremap(0x180c1144, 0x100);
-	if (addr) {
-		/* conn_on_host debug flag */
-		temp += sprintf(temp, "0x180c1144=0x%08x\n", CONSYS_REG_READ(addr));
-		iounmap(addr);
-	} else {
-		WMT_PLAT_PR_INFO("0x180c1144 ioremap fail!\n");
-	}
+	/* conn_on_host debug flag */
+	temp += sprintf(temp, "0x180c1144=0x%08x\n", CONSYS_REG_READ(addr));
+	iounmap(addr);
 
 	addr = ioremap(0x1020E804, 0x100);
-	if (addr) {
-		/* 0x1020E804 */
-		temp += sprintf(temp, "0x1020E804=0x%08x\n", CONSYS_REG_READ(addr));
-		iounmap(addr);
-	} else {
-		WMT_PLAT_PR_INFO("0x1020E804 ioremap fail!\n");
-	}
-#endif
-	WMT_PLAT_PR_INFO("%s length = %d", buffer, osal_strlen(buffer));
+	/* 0x1020E804 */
+	temp += sprintf(temp, "0x1020E804=0x%08x\n", CONSYS_REG_READ(addr));
+	iounmap(addr);
+
+	WMT_PLAT_PR_ERR("%s length = %d", buffer, osal_strlen(buffer));
+	osal_free(buffer);
 }
 
 static INT32 consys_is_connsys_reg(UINT32 addr)
@@ -2775,6 +2453,11 @@ static INT32 consys_calibration_backup_restore_support(VOID)
 	return 1;
 }
 
+static INT32 consys_is_ant_swap_enable_by_hwid(INT32 pin_num)
+{
+	return !gpio_get_value(pin_num);
+}
+
 #if WMT_DEVAPC_DBG_SUPPORT
 static VOID consys_devapc_violation_cb(VOID)
 {
@@ -2797,17 +2480,9 @@ static INT32 consys_is_rc_mode_enable(VOID)
 {
 #if CONSYS_RC_MODE_ENABLE
 	INT32 value;
-	UINT8 *reg_base;
 
-	reg_base = ioremap(SRCLKEN_RC_BASE, 0x10);
-	/* Since RC mode is default on, return 1 if ioremap is failed */
-	if (!reg_base)
-		return 1;
-
-	value = SRCLKEN_RC_CENTRAL_CFG1_BIT &
-		CONSYS_REG_READ(reg_base + SRCLKEN_RC_CENTRAL_CFG1);
-
-	iounmap(reg_base);
+	value = SPM_RC_CENTRAL_CFG1_BIT &
+		CONSYS_REG_READ(conn_reg.spm_base + SPM_RC_CENTRAL_CFG1);
 	return value;
 #else
 	return 0;
@@ -3032,52 +2707,52 @@ static UINT64 consys_get_options(VOID)
 
 INT32 dump_conn_mcu_pc_log_wrapper(VOID)
 {
-	return dump_conn_mcu_pc_log_mt6853("");
+	return dump_conn_mcu_pc_log_mt6873("");
 }
 
 static INT32 consys_common_dump(const char *trg_str)
 {
 	int ret = 0;
 
-	ret += dump_conn_mcu_pc_log_mt6853(trg_str);
+	ret += dump_conn_mcu_pc_log_mt6873(trg_str);
 
-	ret += dump_conn_debug_dump_mt6853(trg_str);
-	ret += dump_conn_mcu_debug_flag_mt6853(trg_str);
-	ret += dump_conn_mcu_ahb_bus_hang_layer1_mt6853(trg_str);
-	ret += dump_conn_mcu_ahb_bus_hang_layer2_mt6853(trg_str);
-	ret += dump_conn_mcu_ahb_bus_hang_layer3_mt6853(trg_str);
-	ret += dump_conn_mcu_ahb_bus_hang_layer4_mt6853(trg_str);
-	ret += dump_conn_mcu_ahb_timeout_info_mt6853(trg_str);
-	ret += dump_conn_bus_hang_debug_mt6853(trg_str);
-	ret += dump_conn_mcu_apb_timeout_info_mt6853(trg_str);
-	ret += dump_conn_apb_bus0_hang_mt6853(trg_str);
-	ret += dump_conn_apb_bus1_hang_mt6853(trg_str);
-	ret += dump_conn_apb_bus2_hang_mt6853(trg_str);
-	ret += dump_conn_emi_ctrl_host_csr_mt6853(trg_str);
-	ret += dump_conn_mcu_confg_emi_ctrl_mt6853(trg_str);
-	ret += dump_conn_mcu_cpu_probe_mt6853(trg_str);
-	ret += dump_conn_mcu_ahb_probe_mt6853(trg_str);
-	ret += dump_conn_mcu_idlm_prot_prob_mt6853(trg_str);
-	ret += dump_conn_mcu_wf_cmdbt_ram_prob_mt6853(trg_str);
-	ret += dump_conn_mcu_pda_dbg_flag_mt6853(trg_str);
-	ret += dump_conn_mcu_sysram_prb_mt6853(trg_str);
-	ret += dump_conn_mcu_confg_mt6853(trg_str);
-	ret += dump_conn_mcu_i_eidlm_mt6853(trg_str);
-	ret += dump_conn_mcu_dma_mt6853(trg_str);
-	ret += dump_conn_mcu_tcm_prob_mt6853(trg_str);
-	ret += dump_conn_mcu_met_prob_mt6853(trg_str);
-	ret += dump_conn_mcusys_n9_mt6853(trg_str);
-	ret += dump_conn_mcu_uart_dbg_loop_mt6853(trg_str);
-	ret += dump_conn_cfg_on_Debug_Signal_mt6853(trg_str);
-	ret += dump_conn_cfg_on_register_mt6853(trg_str);
-	ret += dump_conn_cmdbt_debug_signal_mt6853(trg_str);
-	ret += dump_conn_cmdbt_register_mt6853(trg_str);
-	ret += dump_conn_emi_detect_mt6853(trg_str);
-	ret += dump_conn_cmdbt_debug_mt6853(trg_str);
-	ret += dump_conn_hif_reg_debug_mt6853(trg_str);
-	ret += dump_conn_mcu_confg_bus_hang_reg_mt6853(trg_str);
-	ret += dump_wf_pdma_reg_debug_mt6853(trg_str);
-	ret += dump_conn_to_EMI_bus_path_mt6853(trg_str);
+	ret += dump_conn_debug_dump_mt6873(trg_str);
+	ret += dump_conn_mcu_debug_flag_mt6873(trg_str);
+	ret += dump_conn_mcu_ahb_bus_hang_layer1_mt6873(trg_str);
+	ret += dump_conn_mcu_ahb_bus_hang_layer2_mt6873(trg_str);
+	ret += dump_conn_mcu_ahb_bus_hang_layer3_mt6873(trg_str);
+	ret += dump_conn_mcu_ahb_bus_hang_layer4_mt6873(trg_str);
+	ret += dump_conn_mcu_ahb_timeout_info_mt6873(trg_str);
+	ret += dump_conn_bus_hang_debug_mt6873(trg_str);
+	ret += dump_conn_mcu_apb_timeout_info_mt6873(trg_str);
+	ret += dump_conn_apb_bus0_hang_mt6873(trg_str);
+	ret += dump_conn_apb_bus1_hang_mt6873(trg_str);
+	ret += dump_conn_apb_bus2_hang_mt6873(trg_str);
+	ret += dump_conn_emi_ctrl_host_csr_mt6873(trg_str);
+	ret += dump_conn_mcu_confg_emi_ctrl_mt6873(trg_str);
+	ret += dump_conn_mcu_cpu_probe_mt6873(trg_str);
+	ret += dump_conn_mcu_ahb_probe_mt6873(trg_str);
+	ret += dump_conn_mcu_idlm_prot_prob_mt6873(trg_str);
+	ret += dump_conn_mcu_wf_cmdbt_ram_prob_mt6873(trg_str);
+	ret += dump_conn_mcu_pda_dbg_flag_mt6873(trg_str);
+	ret += dump_conn_mcu_sysram_prb_mt6873(trg_str);
+	ret += dump_conn_mcu_confg_mt6873(trg_str);
+	ret += dump_conn_mcu_i_eidlm_mt6873(trg_str);
+	ret += dump_conn_mcu_dma_mt6873(trg_str);
+	ret += dump_conn_mcu_tcm_prob_mt6873(trg_str);
+	ret += dump_conn_mcu_met_prob_mt6873(trg_str);
+	ret += dump_conn_mcusys_n9_mt6873(trg_str);
+	ret += dump_conn_mcu_uart_dbg_loop_mt6873(trg_str);
+	ret += dump_conn_cfg_on_Debug_Signal_mt6873(trg_str);
+	ret += dump_conn_cfg_on_register_mt6873(trg_str);
+	ret += dump_conn_cmdbt_debug_signal_mt6873(trg_str);
+	ret += dump_conn_cmdbt_register_mt6873(trg_str);
+	ret += dump_conn_emi_detect_mt6873(trg_str);
+	ret += dump_conn_cmdbt_debug_mt6873(trg_str);
+	ret += dump_conn_hif_reg_debug_mt6873(trg_str);
+	ret += dump_conn_mcu_confg_bus_hang_reg_mt6873(trg_str);
+	ret += dump_wf_pdma_reg_debug_mt6873(trg_str);
+	ret += dump_conn_to_EMI_bus_path_mt6873(trg_str);
 
 	return ret;
 }
@@ -3105,9 +2780,4 @@ INT32 consys_assert_timeout_dump(VOID)
 INT32 consys_before_chip_reset_dump(VOID)
 {
 	return consys_common_dump("before_chip_reset");
-}
-
-INT32 consys_ipi_timeout_dump(VOID)
-{
-	return consys_common_dump("ipi_timeout");
 }
