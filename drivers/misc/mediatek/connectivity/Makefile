@@ -42,7 +42,8 @@ endif
     ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export MTK_COMBO_CHIP=CONNAC
+        export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
+	export CONNAC_VER=2_0
         export WLAN_CHIP_ID=6877
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
