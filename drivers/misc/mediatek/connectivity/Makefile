@@ -42,18 +42,18 @@ endif
     ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export MTK_COMBO_CHIP=CONNAC
+        export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
         export WLAN_CHIP_ID=6877
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
         export ADAPTOR_OPTS=$(MTK_COMBO_CHIP)
-        export WIFI_IP_SET=2
+        export WIFI_IP_SET=1
         export WIFI_ECO_VER=1
 
         # Do build-in for xxx.c checking
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
-        obj-y += common/
+        obj-y += conninfra/
         obj-y += wlan/adaptor/
         obj-y += wlan/core/gen4m/
     endif
@@ -61,8 +61,11 @@ endif
     export CFG_FM_CHIP_ID=6877
     export CFG_FM_CHIP=mt6635
 
-    obj-y += bt/mt66xx/legacy/
+    obj-y += bt/mt66xx/connac2/
+
     obj-y += fmradio/
+    export CFG_BUILD_CONNAC2=true
+
     obj-y += gps/
 
 # Otherwise we were called directly from the command line;
