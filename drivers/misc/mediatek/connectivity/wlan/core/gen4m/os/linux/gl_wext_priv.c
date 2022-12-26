@@ -84,10 +84,9 @@
 #include "gl_p2p_os.h"
 #endif
 
-#if (CFG_SUPPORT_CONNINFRA == 1)
+
 #include "connsys_debug_utility.h"
-#include "metlog.h"
-#endif
+#include "metlog.h
 
 /*
  * #if CFG_SUPPORT_QA_TOOL
