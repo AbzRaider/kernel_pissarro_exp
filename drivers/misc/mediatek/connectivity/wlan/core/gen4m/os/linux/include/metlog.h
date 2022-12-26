@@ -20,7 +20,7 @@
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
-struct conn_metlog_info {
+struct int conn_metlog_info {
 	int type;
 	unsigned int read_cr;
 	unsigned int write_cr;
