@@ -58,6 +58,9 @@ endif
         obj-y += wlan/core/gen4m/
     endif
 
+    CONNINFRA_OPTS := TARGET_BOARD_PLATFORM_CONNINFRA=$(TARGET_BOARD_PLATFORM)
+$(linked_module): OPTS += $(CONNINFRA_OPTS)
+
     export CFG_FM_CHIP_ID=6877
     export CFG_FM_CHIP=mt6635
 
