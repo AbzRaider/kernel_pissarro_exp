@@ -7757,7 +7757,7 @@ int priv_driver_set_chip_config(IN struct net_device *prNetDev,
 
 	struct PARAM_CUSTOM_CHIP_CONFIG_STRUCT rChipConfigInfo = {0};
 #if (CFG_SUPPORT_CONNINFRA == 1)
-	struct conn_metlog_info rMetInfo;
+	typedef struct conn_metlog_info rMetInfo;
 	int32_t i4MetRes = 0;
 	uint32_t u4ConEmiPhyBase = 0;
 	uint32_t u4EmiMetOffset = 0;
