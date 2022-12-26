@@ -49,7 +49,7 @@ endif
         export ADAPTOR_OPTS=$(MTK_COMBO_CHIP)
         export WIFI_IP_SET=1
         export WIFI_ECO_VER=1
-
+        export CFG_SUPPORT_CONNINFRA=1
         # Do build-in for xxx.c checking
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
