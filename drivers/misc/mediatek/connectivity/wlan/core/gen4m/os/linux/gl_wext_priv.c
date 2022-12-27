@@ -84,10 +84,6 @@
 #include "gl_p2p_os.h"
 #endif
 
-
-#include "connsys_debug_utility.h"
-#include "metlog.h
-
 /*
  * #if CFG_SUPPORT_QA_TOOL
  * extern UINT_16 g_u2DumpIndex;
@@ -162,10 +158,6 @@ static int priv_driver_set_power_control(IN struct net_device *prNetDev,
 			      IN char *pcCommand,
 			      IN int i4TotalLen);
 #endif
-
-static int priv_driver_set_sw_wfdma(
-	IN struct net_device *prNetDev,
-	IN char *pcCommand, IN int i4TotalLen);
 /*******************************************************************************
  *                       P R I V A T E   D A T A
  *******************************************************************************
@@ -1136,6 +1128,11 @@ __priv_set_int(IN struct net_device *prNetDev,
 	case PRIV_CMD_BAND_CONFIG: {
 		DBGLOG(INIT, INFO, "CMD set_band = %u\n",
 		       (uint32_t) pu4IntBuf[1]);
+#ifdef OPLUS_FEATURE_WIFI_SMART_BW
+		if (prGlueInfo->prAdapter->rSmartBW.smart_bw_params.SMART_BW_DBG) {
+				trigger2GBWSwitch(pu4IntBuf[1]);
+		}
+#endif
 	}
 	break;
 
@@ -3080,9 +3077,6 @@ reqExtSetAcpiDevicePowerState(IN struct GLUE_INFO
 #define CMD_SET_WHOLE_CHIP_RESET "SET_WHOLE_CHIP_RESET"
 #define CMD_SET_WFSYS_RESET      "SET_WFSYS_RESET"
 #endif
-
-#define CMD_SET_SW_WFDMA         "SET_SW_WFDMA"
-
 static uint8_t g_ucMiracastMode = MIRACAST_MODE_OFF;
 
 struct cmd_tlv {
@@ -7756,12 +7750,6 @@ int priv_driver_set_chip_config(IN struct net_device *prNetDev,
 	/* PCHAR  apcArgv[WLAN_CFG_ARGV_MAX] = {0}; */
 
 	struct PARAM_CUSTOM_CHIP_CONFIG_STRUCT rChipConfigInfo = {0};
-#if (CFG_SUPPORT_CONNINFRA == 1)
-	typedef struct conn_metlog_info rMetInfo;
-	int32_t i4MetRes = 0;
-	uint32_t u4ConEmiPhyBase = 0;
-	uint32_t u4EmiMetOffset = 0;
-#endif
 
 	ASSERT(prNetDev);
 	if (GLUE_CHK_PR2(prNetDev, pcCommand) == FALSE)
@@ -7798,31 +7786,6 @@ int priv_driver_set_chip_config(IN struct net_device *prNetDev,
 			   CHIP_CONFIG_RESP_SIZE - 1);
 		rChipConfigInfo.aucCmd[CHIP_CONFIG_RESP_SIZE - 1] = '\0';
 
-#if (CFG_SUPPORT_CONNINFRA == 1)
-		if (kalStrnCmp(rChipConfigInfo.aucCmd, "Wf_MET 3", 8) == 0) {
-			i4MetRes = kstrtouint(rChipConfigInfo.aucCmd + 9, 16,
-							&u4EmiMetOffset);
-			if (i4MetRes) {
-				DBGLOG(REQ, ERROR,
-					"Convert Emi Met Offset error res: %d",
-							i4MetRes);
-			} else {
-				kalSetEmiMetOffset(u4EmiMetOffset);
-				DBGLOG(REQ, INFO, "Set Emi Met Offset: 0x%x",
-							u4EmiMetOffset);
-			}
-		}
-
-		if (kalStrnCmp(rChipConfigInfo.aucCmd, "Wf_MET 2", 8) == 0) {
-			DBGLOG(REQ, INFO, "Stop MET log");
-			i4MetRes = conn_metlog_stop(CONNDRV_TYPE_WIFI);
-			if (i4MetRes != 0)
-				DBGLOG(REQ, ERROR,
-					"conn_metlog_stop error res: %d\n",
-					i4MetRes);
-		}
-#endif
-
 #if (CFG_SUPPORT_802_11AX == 1)
 		if (kalStrnCmp("FrdHeTrig2Host",
 			pcCommand, kalStrLen("FrdHeTrig2Host"))) {
@@ -7843,36 +7806,6 @@ int priv_driver_set_chip_config(IN struct net_device *prNetDev,
 			       rStatus);
 			i4BytesWritten = -1;
 		}
-
-#if (CFG_SUPPORT_CONNINFRA == 1)
-		if (kalStrnCmp(rChipConfigInfo.aucCmd, "Wf_MET 1", 8) == 0) {
-			conninfra_get_phy_addr(&u4ConEmiPhyBase, NULL);
-			u4EmiMetOffset = kalGetEmiMetOffset();
-			DBGLOG(REQ, INFO, "Start MET log, u4ConEmiPhyBase:%d",
-				u4ConEmiPhyBase);
-			if (!u4ConEmiPhyBase) {
-				DBGLOG(INIT, ERROR,
-				       "conninfra_get_phy_addr error\n");
-			} else {
-				rMetInfo.type = CONNDRV_TYPE_WIFI;
-				rMetInfo.read_cr =
-					u4ConEmiPhyBase + u4EmiMetOffset;
-				rMetInfo.write_cr =
-					u4ConEmiPhyBase + u4EmiMetOffset + 0x4;
-				rMetInfo.met_base_ap =
-					u4ConEmiPhyBase + u4EmiMetOffset + 0x8;
-				rMetInfo.met_base_fw =
-					0xF0000000 + u4EmiMetOffset + 0x8;
-				rMetInfo.met_size = 0x8000 - 0x8;
-				rMetInfo.output_len = 64;
-				i4MetRes = conn_metlog_start(&rMetInfo);
-				if (i4MetRes != 0)
-					DBGLOG(REQ, ERROR,
-					"conn_metlog_start error res: %d\n",
-					i4MetRes);
-			}
-		}
-#endif
 	}
 
 	return i4BytesWritten;
@@ -13722,7 +13655,6 @@ struct PRIV_CMD_HANDLER priv_cmd_handlers[] = {
 	{CMD_SET_STA1NSS, priv_driver_set_sta1ss},
 	{CMD_SET_NVRAM, priv_driver_set_nvram},
 	{CMD_GET_NVRAM, priv_driver_get_nvram},
-	{CMD_SET_SW_WFDMA, priv_driver_set_sw_wfdma},
 };
 
 int32_t priv_driver_cmds(IN struct net_device *prNetDev, IN int8_t *pcCommand,
@@ -14312,58 +14244,3 @@ static int priv_driver_set_power_control(IN struct net_device *prNetDev,
 	return 0;
 }
 #endif
-
-static int priv_driver_set_sw_wfdma(
-	IN struct net_device *prNetDev,
-	IN char *pcCommand, IN int i4TotalLen)
-{
-	struct GLUE_INFO *prGlueInfo = NULL;
-	struct ADAPTER *prAdapter = NULL;
-	struct mt66xx_chip_info *prChipInfo;
-	struct BUS_INFO *prBusInfo;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
-	uint32_t u4CfgSetNum = 0, u4Ret = 0;
-	int32_t i4BytesWritten = 0;
-	int32_t i4Argc = 0;
-	int8_t *apcArgv[WLAN_CFG_ARGV_MAX] = { 0 };
-
-	struct PARAM_CUSTOM_KEY_CFG_STRUCT rKeyCfgInfo;
-
-	ASSERT(prNetDev);
-	if (GLUE_CHK_PR2(prNetDev, pcCommand) == FALSE)
-		return -1;
-	prGlueInfo = *((struct GLUE_INFO **) netdev_priv(prNetDev));
-
-	DBGLOG(REQ, LOUD, "command is %s\n", pcCommand);
-
-	wlanCfgParseArgument(pcCommand, &i4Argc, apcArgv);
-	DBGLOG(REQ, LOUD, "argc is %i\n", i4Argc);
-	prAdapter = prGlueInfo->prAdapter;
-	if (prAdapter == NULL)
-		return -1; /* WLAN_STATUS_ADAPTER_NOT_READY */
-
-	prChipInfo = prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
-
-	kalMemZero(&rKeyCfgInfo, sizeof(rKeyCfgInfo));
-
-	wlanCleanAllEmCfgSetting(prAdapter);
-
-
-	if (i4Argc >= 2) {
-		u4Ret = kalkStrtou32(apcArgv[1], 10, &u4CfgSetNum);
-		if (u4Ret != 0) {
-			DBGLOG(REQ, ERROR,
-			       "apcArgv[2] format fail erro code:%d\n",
-			       u4Ret);
-			return -1;
-		}
-
-		DBGLOG(REQ, INFO, "SwWfdma=%d\n", u4CfgSetNum);
-		if (prSwWfdmaInfo->rOps.enable)
-			prSwWfdmaInfo->rOps.enable(
-				prGlueInfo, u4CfgSetNum != 0);
-	}
-	return i4BytesWritten;
-}				/* priv_driver_set_sw_wfdma */
