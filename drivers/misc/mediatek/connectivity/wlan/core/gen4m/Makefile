@@ -930,3 +930,4 @@ $(MODULE_NAME)-objs  += $(SYSDVT_OBJS)
 ifneq ($(findstring UT_TEST_MODE,$(MTK_COMBO_CHIP)),)
 include $(src)/test/ut.make
 endif
+endif
