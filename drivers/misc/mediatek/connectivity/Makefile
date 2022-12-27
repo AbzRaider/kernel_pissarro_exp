@@ -67,8 +67,8 @@ PATH_TO_WMT_DRV=/drivers/misc/mediatek/connectivity/conninfra
         obj-y += wlan/adaptor/
         obj-y += wlan/core/gen4m/
     endif
-    PATH_TO_WLAN_CHR_DRV = vendor/mediatek/kernel_modules/connectivity/wlan/adaptor
-        PATH_TO_WLAN_DRV     = vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m
+    PATH_TO_WLAN_CHR_DRV=drivers/misc/mediatek/connectivity/wlan/adaptor
+        PATH_TO_WLAN_DRV=drivers/misc/mediatek/connectivity/wlan/core/gen4m
 
         ABS_PATH_TO_WMT_DRV      = $(srctree)/../$(PATH_TO_WMT_DRV)
         ABS_PATH_TO_WLAN_CHR_DRV = $(srctree)/../$(PATH_TO_WLAN_CHR_DRV)
@@ -91,8 +91,17 @@ endif
 
     export CFG_FM_CHIP_ID=6877
     export CFG_FM_CHIP=mt6635
-
-    obj-y += bt/mt66xx/connac2/
+    
+ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP),"CONSYS_6877"))
+            PATH_TO_BT_DRV       = drivers/misc/mediatek/connectivity/bt/mt66xx/btif
+           export _MTK_BT_CHIP=MTK_CONSYS_MT6877
+        else
+            PATH_TO_BT_DRV=drivers/misc/mediatek/connectivity/bt/mt66xx/wmt
+        endif
+        ABS_PATH_TO_BT_DRV       = $(srctree)/../$(PATH_TO_BT_DRV)
+        $(shell unlink $(srctree)/$(src)/bt)
+        $(shell ln -s $(ABS_PATH_TO_BT_DRV) $(srctree)/$(src)/bt)
+         obj-y += bt/mt66xx/btif/
 
     obj-y += fmradio/
     export CFG_BUILD_CONNAC2=true
