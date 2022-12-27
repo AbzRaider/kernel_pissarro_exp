@@ -52,6 +52,9 @@ ifneq ($(CONFIG_MEDIATEK_EMI),)
 ccflags-y += -DCONFIG_MTK_EMI=1
 endif
 
+OS_DIR      := os/$(os)/
+HIF_COMMON_DIR := $(OS_DIR)hif/common/
+
 ifeq ($(WLAN_CHIP_ID),)
 WLAN_CHIP_ID=$(word 1, $(MTK_COMBO_CHIP))
 endif
@@ -152,10 +155,11 @@ CONFIG_NUM_OF_WFDMA_TX_RING=0
 CONFIG_MTK_WIFI_CONNINFRA_SUPPORT=y
 CONFIG_MTK_WIFI_CONNAC2X_2x2=y
 CONFIG_MTK_WIFI_DOWNLOAD_DYN_MEMORY_MAP=y
-CONFIG_MTK_FRAG_AGG_ATTACK_DETECTION=y
-ccflags-y += -DCFG_SUPPORT_CONNINFRA=1
 ccflags-y += -DCFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH=1
 ccflags-y += -DCFG_ROM_PATCH_NO_SEM_CTRL=1
+CONFIG_MTK_FRAG_AGG_ATTACK_DETECTION=y
+ccflags-y += -DCFG_SUPPORT_CONNINFRA=1
+ccflags-y += -DCONFIG_MTK_WIFI_HE80
 endif
 
 ifeq ($(CONFIG_MTK_WIFI_CONNINFRA_SUPPORT), y)
@@ -178,6 +182,18 @@ CONFIG_MTK_WIFI_CONNAC2X_2x2=y
 CONFIG_MTK_WIFI_DOWNLOAD_DYN_MEMORY_MAP=y
 CONFIG_MTK_WIFI_CONNINFRA_SUPPORT=y
 endif
+
+ifeq ($(MTK_ANDROID_WMT), y)
+    ccflags-y += -DCFG_MTK_ANDROID_WMT=1
+    WMT_SUPPORT := y
+else ifneq ($(filter MT6632,$(MTK_COMBO_CHIP)),)
+    ccflags-y += -DCFG_MTK_ANDROID_WMT=1
+    WMT_SUPPORT := y
+else
+    ccflags-y += -DCFG_MTK_ANDROID_WMT=0
+    WMT_SUPPORT := n
+endif
+    
 
 ifeq ($(CONFIG_MTK_FRAG_AGG_ATTACK_DETECTION), y)
     ccflags-y += -DCFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION=1
@@ -278,6 +294,126 @@ else
         ccflags-y += -DMTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
     endif
 endif
+ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), axi)
+ccflags-y += -I$(src)/os/$(os)/hif/common/include
+ccflags-y += -I$(src)/os/$(os)/hif/axi/include
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), usb)
+ccflags-y += -I$(src)/os/$(os)/hif/usb/include
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), ut)
+ccflags-y += -I$(src)/test -I$(src)/test/lib/include -I$(src)/test/testcases -I$(src)/test/lib/hif
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), none)
+ccflags-y += -I$(src)/os/$(os)/hif/none/include
+endif
+
+CONFIG_MTK_WIFI_MCC_SUPPORT=y
+ifeq ($(CONFIG_MTK_WIFI_MCC_SUPPORT), y)
+    ccflags-y += -DCFG_SUPPORT_CHNL_CONFLICT_REVISE=0
+else
+    ccflags-y += -DCFG_SUPPORT_CHNL_CONFLICT_REVISE=1
+endif
+
+ifeq ($(CONFIG_MTK_AEE_FEATURE), y)
+    ccflags-y += -DCFG_SUPPORT_AEE=1
+else
+    ccflags-y += -DCFG_SUPPORT_AEE=0
+endif
+
+# Disable ASSERT() for user load, enable for others
+ifneq ($(TARGET_BUILD_VARIANT),user)
+    ccflags-y += -DBUILD_QA_DBG=1
+else
+    ccflags-y += -DBUILD_QA_DBG=0
+endif
+
+ifeq ($(CONFIG_MTK_COMBO_WIFI),y)
+    ccflags-y += -DCFG_WPS_DISCONNECT=1
+endif
+
+ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), sdio)
+    ccflags-y += -D_HIF_SDIO=1
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), pcie)
+    ccflags-y += -D_HIF_PCIE=1
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), usb)
+    ccflags-y += -D_HIF_USB=1
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), axi)
+    ccflags-y += -D_HIF_AXI=1
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), ut)
+    # Increase frame size to 2048 because of 'cfg80211_connect_result' exceed stack size
+    ccflags-y += -D_HIF_UT=1 -Wno-unused-function -Wno-unused-variable -Wframe-larger-than=2048
+else ifeq ($(CONFIG_MTK_COMBO_WIFI_HIF), none)
+	ccflags-y += -D_HIF_NONE=1
+else
+    $(error Unsuppoted HIF=$(CONFIG_MTK_COMBO_WIFI_HIF)!!)
+endif
+
+ifeq ($(CONFIG_MTK_WIFI_DOWNLOAD_DYN_MEMORY_MAP), y)
+    ccflags-y += -DCFG_DOWNLOAD_DYN_MEMORY_MAP=1
+else
+    ccflags-y += -DCFG_DOWNLOAD_DYN_MEMORY_MAP=0
+endif
+
+ifneq ($(CFG_CFG80211_VERSION),)
+VERSION_STR = $(subst \",,$(subst ., , $(subst -, ,$(subst v,,$(CFG_CFG80211_VERSION)))))
+$(info VERSION_STR=$(VERSION_STR))
+X = $(firstword $(VERSION_STR))
+Y = $(word 2 ,$(VERSION_STR))
+Z = $(word 3 ,$(VERSION_STR))
+VERSION := $(shell echo "$$(( $X * 65536 + $Y * 256 + $Z))" )
+ccflags-y += -DCFG_CFG80211_VERSION=$(VERSION)
+$(info DCFG_CFG80211_VERSION=$(VERSION))
+endif
+
+ccflags-y += -DCFG_SUPPORT_PASSPOINT=1
+ccflags-y += -DCFG_HS20_DEBUG=1
+
+MTK_MET_PROFILING_SUPPORT = yes
+ifeq ($(MTK_MET_PROFILING_SUPPORT), yes)
+    ccflags-y += -DCFG_MET_PACKET_TRACE_SUPPORT=1
+else
+    ccflags-y += -DCFG_MET_PACKET_TRACE_SUPPORT=0
+endif
+
+MTK_MET_TAG_SUPPORT = no
+ifeq ($(MTK_MET_TAG_SUPPORT), yes)
+    ccflags-y += -DMET_USER_EVENT_SUPPORT
+    ccflags-y += -DCFG_MET_TAG_SUPPORT=1
+else
+    ccflags-y += -DCFG_MET_TAG_SUPPORT=0
+endif
+
+MTK_TC3_SUPPORT = no
+ifeq ($(MTK_TC3_SUPPORT), yes)
+    ccflags-y += -DCFG_TC3_FEATURE=1
+    ccflags-y += -DCFG_P2P_CONNECT_ALL_BSS=1
+    ccflags-y += -DCFG_P2P_DEFAULT_CLIENT_COUNT=1
+    ccflags-y += -DCFG_P2P_SCAN_REPORT_ALL_BSS=1
+else
+    ccflags-y += -DCFG_TC3_FEATURE=0
+endif
+
+ifeq ($(CONFIG_MTK_TC10_FEATURE), y)
+    ccflags-y += -DCFG_TC10_FEATURE=1
+else
+    ccflags-y += -DCFG_TC10_FEATURE=0
+endif
+
+ifneq ($(CONFIG_MTK_MD1_SUPPORT), )
+    ccflags-y += -DCONFIG_MTK_MD_SUPPORT=1
+else
+    ccflags-y += -DCONFIG_MTK_MD_SUPPORT=0
+endif
+
+ifeq ($(CONFIG_MTK_TC1_FEATURE), y)
+    ccflags-y += -I$(srctree)/drivers/misc/mediatek/tc1_interface
+    ccflags-y += -DCFG_TC1_FEATURE=1
+else
+    ccflags-y += -DCFG_TC1_FEATURE=0
+endif
+
+ifeq ($(CONFIG_MTK_WIFI_NAN), y)
+ccflags-y += -DCFG_SUPPORT_NAN=1
+else
+ccflags-y += -DCFG_SUPPORT_NAN=0
 
 ifeq ($(MTK_ANDROID_EMI), y)
     ccflags-y += -DCFG_MTK_ANDROID_EMI=1
@@ -285,11 +421,7 @@ else
     ccflags-y += -DCFG_MTK_ANDROID_EMI=0
 endif
 
-ifneq ($(WIFI_IP_SET),)
-    ccflags-y += -DCFG_WIFI_IP_SET=$(WIFI_IP_SET)
-else
-    ccflags-y += -DCFG_WIFI_IP_SET=1
-endif
+
 
 ifneq ($(filter MTK_WCN_REMOVE_KERNEL_MODULE,$(KBUILD_SUBDIR_CCFLAGS)),)
     ccflags-y += -DCFG_BUILT_IN_DRIVER=1
