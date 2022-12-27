@@ -22,6 +22,13 @@ ifneq ($(filter yes, $(_MTK_PLAT_MT6885_EMULATION)),)
 endif
 endif
 
+# only for sw-ready-go
+ifeq ($(CONNAC20_CHIPID), 6877)
+ifneq ($(filter yes, $(_MTK_PLAT_MT6853_EMULATION)),)
+    $(warning connac20 bt driver: 6885 emulation is set!)
+    ccflags-y += -D CONNAC20_CHIPID=6853
+endif
+
 ifndef TOP
     TOP := $(srctree)/..
 endif
