@@ -13,6 +13,7 @@ ccflags-y += -Wno-unused-result
 ccflags-y += -Wno-format
 ccflags-y += -Wno-parentheses
 ccflags-y += -Wno-invalid-pp-token
+ccflags-y += -Wno-macro-redefined
 
 ifeq ($(os), none)
 ccflags-y += -I/usr/include/
