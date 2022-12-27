@@ -93,7 +93,7 @@ endif
     export CFG_FM_CHIP=mt6635
     
 ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP),"CONSYS_6877"))
-            PATH_TO_BT_DRV       = drivers/misc/mediatek/connectivity/bt/mt66xx/btif
+            PATH_TO_BT_DRV       = drivers/misc/mediatek/connectivity/bt/mt66xx/connac2/
            export _MTK_BT_CHIP=MTK_CONSYS_MT6877
         else
             PATH_TO_BT_DRV=drivers/misc/mediatek/connectivity/bt/mt66xx/wmt
@@ -101,7 +101,7 @@ ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP),"CONSYS_6877"))
         ABS_PATH_TO_BT_DRV       = $(srctree)/../$(PATH_TO_BT_DRV)
         $(shell unlink $(srctree)/$(src)/bt)
         $(shell ln -s $(ABS_PATH_TO_BT_DRV) $(srctree)/$(src)/bt)
-         obj-y += bt/mt66xx/btif/
+         obj-y += bt/mt66xx/connac2/
 
     obj-y += fmradio/
     export CFG_BUILD_CONNAC2=true
