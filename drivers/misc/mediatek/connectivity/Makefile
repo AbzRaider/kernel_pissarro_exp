@@ -33,12 +33,21 @@ endif
     subdir-ccflags-y += -I$(srctree)/drivers/clk/mediatek/
     subdir-ccflags-y += -I$(srctree)/drivers/pinctrl/mediatek/
 
+ ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
+        $(info $$CONFIG_MTK_COMBO_CHIP is [${CONFIG_MTK_COMBO_CHIP}])
+        MTK_PLATFORM_ID := $(patsubst CONSYS_%,%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
+        $(info MTK_PLATFORM_ID is [${MTK_PLATFORM_ID}])
+	
+      export MTK_PLATFORM_WMT=$(MTK_PLATFORM)
+      export TARGET_BOARD_PLATFORM_WMT=$(patsubst CONSYS_%,mt%,$(subst ",,$(CONFIG_MTK_COMBO_CHIP)))
+	
     # Do Nothing, move to standalone repo
     MODULE_NAME := connadp
     obj-y += $(MODULE_NAME).o
     $(MODULE_NAME)-objs += common/connectivity_build_in_adapter.o
     $(MODULE_NAME)-objs += common/wmt_build_in_adapter.o
-
+PATH_TO_WMT_DRV=/drivers/misc/mediatek/connectivity/conninfra
+        export CONNAC_VER=2_0
     ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
@@ -58,7 +67,12 @@ endif
         obj-y += wlan/adaptor/
         obj-y += wlan/core/gen4m/
     endif
+    PATH_TO_WLAN_CHR_DRV = vendor/mediatek/kernel_modules/connectivity/wlan/adaptor
+        PATH_TO_WLAN_DRV     = vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m
 
+        ABS_PATH_TO_WMT_DRV      = $(srctree)/../$(PATH_TO_WMT_DRV)
+        ABS_PATH_TO_WLAN_CHR_DRV = $(srctree)/../$(PATH_TO_WLAN_CHR_DRV)
+        ABS_PATH_TO_WLAN_DRV     = $(srctree)/../$(PATH_TO_WLAN_DRV)
     CONNINFRA_OPTS := TARGET_BOARD_PLATFORM_CONNINFRA=$(TARGET_BOARD_PLATFORM)
 $(linked_module): OPTS += $(CONNINFRA_OPTS)
 
