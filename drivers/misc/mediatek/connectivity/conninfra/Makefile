@@ -172,3 +172,5 @@ $(MODULE_NAME)-objs += test/dump_test.o
 endif
 ccflags-y += -D CONNINFRA_PLAT_BUILD_MODE=3
 $(MODULE_NAME)-objs += platform/consys_hw_plat_data.o
+ccflags-y += -I$(src)/debug_utility/metlog
+ccflags-y += -I$(src)/platform/$(CONNSYS_PLATFORM)/include/CODA
