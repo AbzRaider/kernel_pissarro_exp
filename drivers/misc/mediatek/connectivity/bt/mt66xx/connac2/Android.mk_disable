@@ -22,6 +22,4 @@ $(BT_EXPORT_SYMBOL).in: $(intermediates)/LINKED/% : $(CONN_INFRA_EXPORT_SYMBOL)
 	$(copy-file-to-target)
 	cp $(CONN_INFRA_EXPORT_SYMBOL) $(BT_EXPORT_SYMBOL)
 
-$(linked_module): $(BT_EXPORT_SYMBOL).in
-
 endif
