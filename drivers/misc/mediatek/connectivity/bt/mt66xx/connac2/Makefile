@@ -122,3 +122,4 @@ HIF_OBJS := btmtk_btif_main.o btmtk_fw_log.o
 $(MODULE_NAME)-objs  += $(CORE_OBJS)
 $(MODULE_NAME)-objs  += $(HIF_OBJS)
 $(MODULE_NAME)-objs  += $(CHIP_OBJS)
+endif
