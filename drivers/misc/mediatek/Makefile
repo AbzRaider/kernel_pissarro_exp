@@ -151,7 +151,9 @@ obj-y += log_store/
 obj-$(CONFIG_MTK_ECCCI_C2K) += c2k_usb/
 obj-$(CONFIG_USB) += usb_boost/
 obj-$(CONFIG_MTK_USB_TYPEC) += typec/
+ifneq ($(wildcard $(srctree)/../vendor/mediatek/internal/selinux_warning_enable),)
 obj-$(CONFIG_MTK_SELINUX_AEE_WARNING) += selinux_warning/
+endif
 obj-$(CONFIG_THERMAL)   += thermal/
 obj-$(CONFIG_MTK_MTD_NAND) += nand/
 obj-y += performance/
@@ -159,7 +161,9 @@ obj-$(CONFIG_MEDIATEK_SOLUTION) += cmo/
 obj-$(CONFIG_MTK_VOW_SUPPORT)  += vow/
 obj-y += io_boost/
 obj-y += mtprintk/
+ifneq ($(wildcard $(srctree)/drivers/misc/mediatek/met_drv/),)
 obj-y += met_drv/
+endif
 obj-y += perf/
 obj-$(CONFIG_MTK_JPEG) += jpeg/
 obj-$(CONFIG_MTK_SPMTWAM) += twam/
