@@ -43,7 +43,8 @@ endif
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
         export MTK_COMBO_CHIP=CONNAC2X2_SOC5_0
-        export WLAN_CHIP_ID=$(MTK_PLATFORM_ID)
+        export WLAN_CHIP_ID=6877
+        export WLAN_CHIP=mt6853
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
         export ADAPTOR_OPTS=$(MTK_COMBO_CHIP)
