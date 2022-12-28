@@ -92,11 +92,11 @@ struct conninfra_rst_data {
 
 struct conninfra_rst_data rst_data;
 
-int conninfra_get_clock_schematic(void)
+int conninfra_get_clock_scheMATIC(void)
 {
 	return consys_hw_get_clock_schematic();
 }
-EXPORT_SYMBOL(conninfra_get_clock_schematic);
+EXPORT_SYMBOL(conninfra_get_clock_scheMATIC);
 
 void conninfra_get_phy_addr(unsigned int *addr, unsigned int *size)
 {
