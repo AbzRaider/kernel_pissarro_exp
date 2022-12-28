@@ -1984,7 +1984,7 @@ void soc5_0_Conninfra_cb_register(void)
 	update_pre_cal_status(0);
 #endif /* (CFG_SUPPORT_PRE_ON_PHY_ACTION == 1) */
 
-	conninfra_sub_drv_ops_register(CONNDRV_TYPE_WIFI,
+	conninfra_sub_drv_ops_registeR(CONNDRV_TYPE_WIFI,
 		&g_conninfra_wf_cb);
 }
 #endif
@@ -3811,7 +3811,7 @@ static void soc5_0_DumpHostCr(struct ADAPTER *prAdapter)
 
 static void soc5_0_DumpBusHangCr(struct ADAPTER *prAdapter)
 {
-	conninfra_is_bus_hang();
+	conninfra_is_bus_HANG();
 	soc5_0_DumpHostCr(prAdapter);
 }
 
@@ -3832,7 +3832,7 @@ static int soc5_0_CheckBusHang(void *adapter, uint8_t ucWfResetEnable)
  *   & Check "AP2CONN_INFRA OFF step is ok"
  */
 		conninfra_read_ret = conninfra_reg_readable();
-		conninfra_hang_ret = conninfra_is_bus_hang();
+		conninfra_hang_ret = conninfra_is_bus_HANG();
 		if (!conninfra_read_ret) {
 			DBGLOG(HAL, ERROR,
 				"conninfra_reg_readable fail(%d)\n",

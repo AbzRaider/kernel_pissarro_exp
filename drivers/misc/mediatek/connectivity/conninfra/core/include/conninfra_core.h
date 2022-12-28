@@ -226,7 +226,7 @@ void conninfra_core_pre_cal_blocking(void);
  */
 int conninfra_core_reg_readable(void);
 int conninfra_core_reg_readable_no_lock(void);
-int conninfra_core_is_bus_hang(void);
+int conninfra_core_is_bus_HANG(void);
 
 int conninfra_core_is_consys_reg(phys_addr_t addr);
 int conninfra_core_reg_read(unsigned long address, unsigned int *value, unsigned int mask);
@@ -240,8 +240,8 @@ void conninfra_core_clock_fail_dump_cb(void);
 int conninfra_core_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 int conninfra_core_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
 
-int conninfra_core_adie_top_ck_en_on(enum consys_adie_ctl_type type);
-int conninfra_core_adie_top_ck_en_off(enum consys_adie_ctl_type type);
+int conninfra_core_adie_top_ck_en_ON(enum consys_adie_ctl_type type);
+int conninfra_core_adie_top_ck_en_OFF(enum consys_adie_ctl_type type);
 
 int conninfra_core_force_conninfra_wakeup(void);
 int conninfra_core_force_conninfra_sleep(void);
@@ -252,9 +252,9 @@ int conninfra_core_reset_power_state(void);
 int conninfra_core_dump_power_state(void);
 int conninfra_core_pmic_event_cb(unsigned int, unsigned int);
 
-void conninfra_core_config_setup(void);
+void conninfra_core_config_SETUP(void);
 
-int conninfra_core_bus_clock_ctrl(enum consys_drv_type drv_type, unsigned int bus_clock, int status);
+int conninfra_core_bus_clock_CTRL(enum consys_drv_type drv_type, unsigned int bus_clock, int status);
 
 /*******************************************************************************
 *                              F U N C T I O N S

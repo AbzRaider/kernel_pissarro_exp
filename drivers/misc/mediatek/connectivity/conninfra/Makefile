@@ -68,7 +68,7 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/include/
 ccflags-y += -Werror
 ccflags-y += -Wno-error=format
 ccflags-y += -Wno-error=format-extra-args
-
+ccflags-y += -Wno-implicit-function-declaration
 ###############################################################################
 MODULE_NAME := conninfra
 ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)

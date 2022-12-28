@@ -4,3 +4,4 @@ ccflags-y += \
 	-I$(srctree)/drivers/misc/mediatek/udi/include/
 
 obj-y += mtk_udi.o
+ccflags-y += -Wno-fortify-source

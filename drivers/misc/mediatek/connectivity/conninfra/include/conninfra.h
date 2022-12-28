@@ -158,7 +158,7 @@ enum connsys_emi_type
 ********************************************************************************
 */
 /* Conninfra bus clock control */
-int conninfra_bus_clock_ctrl(enum consys_drv_type drv_type, unsigned int bus_clock, int status);
+inline int conninfra_bus_clock_CTRL(enum consys_drv_type drv_type, unsigned int bus_clock, int status);
 /* Clock schematic query */
 int conninfra_get_clock_schematic(void);
 
@@ -166,8 +166,8 @@ int conninfra_get_clock_schematic(void);
 int conninfra_spi_clock_switch(enum connsys_spi_speed_type type);
 
 /* A-die top_ck_en control */
-int conninfra_adie_top_ck_en_on(enum consys_adie_ctl_type type);
-int conninfra_adie_top_ck_en_off(enum consys_adie_ctl_type type);
+int conninfra_adie_top_ck_en_ON(enum consys_adie_ctl_type type);
+int conninfra_adie_top_ck_en_OFF(enum consys_adie_ctl_type type);
 
 /* RFSPI */
 int conninfra_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
@@ -182,7 +182,7 @@ int conninfra_pwr_on(enum consys_drv_type drv_type);
 int conninfra_pwr_off(enum consys_drv_type drv_type);
 
 /* To setup config relative data, ex: debug flag */
-void conninfra_config_setup(void);
+void conninfra_config_SETUP(void);
 
 /* reg */
 /*
@@ -201,7 +201,7 @@ int conninfra_reg_readable_no_lock(void);
  * > 0 : HANG!!
  * CONNINFRA_ERR_RST_ONGOING: whole chip reset is ongoing
  */
-int conninfra_is_bus_hang(void);
+int conninfra_is_bus_HANG(void);
 
 /* chip reset
  * return:
@@ -255,8 +255,8 @@ struct sub_drv_ops_cb {
 	void (*time_change_notify)(void);
 };
 
-int conninfra_sub_drv_ops_register(enum consys_drv_type drv_type, struct sub_drv_ops_cb *cb);
-int conninfra_sub_drv_ops_unregister(enum consys_drv_type drv_type);
+int conninfra_sub_drv_ops_registeR(enum consys_drv_type drv_type, struct sub_drv_ops_cb *cb);
+int conninfra_sub_drv_ops_unregisteR(enum consys_drv_type drv_type);
 
 /*******************************************************************************
 *                              F U N C T I O N S
