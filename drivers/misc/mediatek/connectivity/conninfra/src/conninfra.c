@@ -136,7 +136,7 @@ void conninfra_get_emi_phy_addr(enum connsys_emi_type type, phys_addr_t* base, u
 }
 EXPORT_SYMBOL(conninfra_get_emi_phy_addr);
 
-int conninfra_pwr_on(enum consys_drv_type drv_type)
+int conninfra_pwr_ON(enum consys_drv_type drv_type)
 {
 	pr_info("[%s] drv=[%d]", __func__, drv_type);
 	if (conninfra_core_is_rst_locking()) {
@@ -150,9 +150,9 @@ int conninfra_pwr_on(enum consys_drv_type drv_type)
 
 	return conninfra_core_power_on(drv_type);
 }
-EXPORT_SYMBOL(conninfra_pwr_on);
+EXPORT_SYMBOL(conninfra_pwr_ON);
 
-int conninfra_pwr_off(enum consys_drv_type drv_type)
+int conninfra_pwr_OFF(enum consys_drv_type drv_type)
 {
 	if (conninfra_core_is_rst_locking()) {
 		DUMP_LOG();
@@ -165,21 +165,21 @@ int conninfra_pwr_off(enum consys_drv_type drv_type)
 
 	return conninfra_core_power_off(drv_type);
 }
-EXPORT_SYMBOL(conninfra_pwr_off);
+EXPORT_SYMBOL(conninfra_pwr_OFF);
 
 
-int conninfra_reg_readable(void)
+int conninfra_reg_Readable(void)
 {
 	return conninfra_core_reg_readable();
 }
-EXPORT_SYMBOL(conninfra_reg_readable);
+EXPORT_SYMBOL(conninfra_reg_Readable);
 
 
-int conninfra_reg_readable_no_lock(void)
+int conninfra_reg_readable_no_LOCK(void)
 {
 	return conninfra_core_reg_readable_no_lock();
 }
-EXPORT_SYMBOL(conninfra_reg_readable_no_lock);
+EXPORT_SYMBOL(conninfra_reg_readable_no_LOCK);
 
 int conninfra_is_bus_HANG(void)
 {
@@ -191,7 +191,7 @@ int conninfra_is_bus_HANG(void)
 }
 EXPORT_SYMBOL(conninfra_is_bus_HANG);
 
-int conninfra_trigger_whole_chip_rst(enum consys_drv_type who, char *reason)
+int conninfra_trigger_whole_chip_RST(enum consys_drv_type who, char *reason)
 {
 	/* use schedule worker to trigger ??? */
 	/* so that function can be returned immediately */
@@ -209,7 +209,7 @@ int conninfra_trigger_whole_chip_rst(enum consys_drv_type who, char *reason)
 
 	return 0;
 }
-EXPORT_SYMBOL(conninfra_trigger_whole_chip_rst);
+EXPORT_SYMBOL(conninfra_trigger_whole_chip_RST);
 
 int conninfra_sub_drv_ops_registeR(enum consys_drv_type type,
 				struct sub_drv_ops_cb *cb)
@@ -254,7 +254,7 @@ int conninfra_spi_READ(enum sys_spi_subsystem subsystem, unsigned int addr, unsi
 }
 EXPORT_SYMBOL(conninfra_spi_READ);
 
-int conninfra_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data)
+int conninfra_spi_WRITE(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data)
 {
 	if (conninfra_core_is_rst_locking()) {
 		DUMP_LOG();
@@ -268,7 +268,7 @@ int conninfra_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, uns
 	conninfra_core_spi_write(subsystem, addr, data);
 	return 0;
 }
-EXPORT_SYMBOL(conninfra_spi_write);
+EXPORT_SYMBOL(conninfra_spi_WRITE);
 
 int conninfra_adie_top_ck_en_ON(enum consys_adie_ctl_type type)
 {
@@ -292,11 +292,11 @@ int conninfra_adie_top_ck_en_OFF(enum consys_adie_ctl_type type)
 }
 EXPORT_SYMBOL(conninfra_adie_top_ck_en_OFF);
 
-int conninfra_spi_clock_switch(enum connsys_spi_speed_type type)
+int conninfra_spi_clock_SWITCH(enum connsys_spi_speed_type type)
 {
 	return conninfra_core_spi_clock_switch(type);
 }
-EXPORT_SYMBOL(conninfra_spi_clock_switch);
+EXPORT_SYMBOL(conninfra_spi_clock_SWITCH);
 
 void conninfra_config_SETUP(void)
 {
