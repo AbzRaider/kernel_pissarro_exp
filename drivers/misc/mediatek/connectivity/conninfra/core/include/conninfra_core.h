@@ -198,8 +198,8 @@ typedef enum {
 extern int conninfra_core_init(void);
 extern int conninfra_core_deinit(void);
 
-int conninfra_core_power_on(enum consys_drv_type type);
-int conninfra_core_power_off(enum consys_drv_type type);
+int conninfra_core_power_ON(enum consys_drv_type type);
+int conninfra_core_power_OFF(enum consys_drv_type type);
 
 int conninfra_core_lock_rst(void);
 int conninfra_core_unlock_rst(void);
@@ -210,8 +210,8 @@ int conninfra_core_subsys_ops_reg(enum consys_drv_type type,
 int conninfra_core_subsys_ops_unreg(enum consys_drv_type type);
 
 
-int conninfra_core_screen_on(void);
-int conninfra_core_screen_off(void);
+int conninfra_core_screen_ON(void);
+int conninfra_core_screen_OFF(void);
 
 /* pre_cal */
 int conninfra_core_pre_cal_start(void);
@@ -224,32 +224,32 @@ void conninfra_core_pre_cal_blocking(void);
  * return value
  * 1 : Yes, 0: NO
  */
-int conninfra_core_reg_readable(void);
-int conninfra_core_reg_readable_no_lock(void);
+int conninfra_core_reg_Readable(void);
+int conninfra_core_reg_readable_no_LOCK(void);
 int conninfra_core_is_bus_HANG(void);
 
 int conninfra_core_is_consys_reg(phys_addr_t addr);
-int conninfra_core_reg_read(unsigned long address, unsigned int *value, unsigned int mask);
-int conninfra_core_reg_write(unsigned long address, unsigned int value, unsigned int mask);
+int conninfra_core_reg_READ(unsigned long address, unsigned int *value, unsigned int mask);
+int conninfra_core_reg_WRITE(unsigned long address, unsigned int value, unsigned int mask);
 
 int conninfra_core_is_rst_locking(void);
 
 int conninfra_core_thermal_query(int *temp_val);
 void conninfra_core_clock_fail_dump_cb(void);
 
-int conninfra_core_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
-int conninfra_core_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
+int conninfra_core_spi_READ(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
+int conninfra_core_spi_WRITE(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
 
 int conninfra_core_adie_top_ck_en_ON(enum consys_adie_ctl_type type);
 int conninfra_core_adie_top_ck_en_OFF(enum consys_adie_ctl_type type);
 
-int conninfra_core_force_conninfra_wakeup(void);
-int conninfra_core_force_conninfra_sleep(void);
+int conninfra_core_force_conninfra_wakeUP(void);
+int conninfra_core_force_conninfra_SLEEP(void);
 
-int conninfra_core_spi_clock_switch(enum connsys_spi_speed_type type);
+int conninfra_core_spi_clock_SWITCH(enum connsys_spi_speed_type type);
 
-int conninfra_core_reset_power_state(void);
-int conninfra_core_dump_power_state(void);
+int conninfra_core_reset_Power_state(void);
+int conninfra_core_dump_Power_state(void);
 int conninfra_core_pmic_event_cb(unsigned int, unsigned int);
 
 void conninfra_core_config_SETUP(void);
