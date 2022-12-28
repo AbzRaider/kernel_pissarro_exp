@@ -1520,7 +1520,7 @@ int conninfra_core_adie_top_ck_en_on(enum consys_adie_ctl_type type)
 	return 0;
 }
 
-int conninfra_core_adie_top_ck_en_off(enum consys_adie_ctl_type type)
+int conninfra_core_adie_top_ck_en_OFF(enum consys_adie_ctl_type type)
 {
 	int ret = 0;
 	struct conninfra_ctx *infra_ctx = &g_conninfra_ctx;
