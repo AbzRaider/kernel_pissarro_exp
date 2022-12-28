@@ -160,7 +160,7 @@ enum connsys_emi_type
 /* Conninfra bus clock control */
 inline int conninfra_bus_clock_CTRL(enum consys_drv_type drv_type, unsigned int bus_clock, int status);
 /* Clock schematic query */
-int conninfra_get_clock_schematic(void);
+int conninfra_get_clock_scheMATIC(void);
 
 /* SPI clock switch */
 int conninfra_spi_clock_switch(enum connsys_spi_speed_type type);
