@@ -163,23 +163,23 @@ inline int conninfra_bus_clock_CTRL(enum consys_drv_type drv_type, unsigned int 
 int conninfra_get_clock_scheMATIC(void);
 
 /* SPI clock switch */
-int conninfra_spi_clock_switch(enum connsys_spi_speed_type type);
+int conninfra_spi_clock_SWITCH(enum connsys_spi_speed_type type);
 
 /* A-die top_ck_en control */
 int conninfra_adie_top_ck_en_ON(enum consys_adie_ctl_type type);
 int conninfra_adie_top_ck_en_OFF(enum consys_adie_ctl_type type);
 
 /* RFSPI */
-int conninfra_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
-int conninfra_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
+int conninfra_spi_READ(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
+int conninfra_spi_WRITE(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
 
 /* EMI */
 void conninfra_get_phy_addr(unsigned int *addr, unsigned int *size);
 void conninfra_get_emi_phy_addr(enum connsys_emi_type type, phys_addr_t* base, unsigned int *size);
 
 /* power on/off */
-int conninfra_pwr_on(enum consys_drv_type drv_type);
-int conninfra_pwr_off(enum consys_drv_type drv_type);
+int conninfra_pwr_ON(enum consys_drv_type drv_type);
+int conninfra_pwr_OFF(enum consys_drv_type drv_type);
 
 /* To setup config relative data, ex: debug flag */
 void conninfra_config_SETUP(void);
@@ -189,13 +189,13 @@ void conninfra_config_SETUP(void);
  * 1 : can read
  * 0 : can't read
  */
-int conninfra_reg_readable(void);
+int conninfra_reg_Readable(void);
 /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*/
 /* reg readable                                  */
 /* THIS API SHOULD NOT USED IN NORMAL CASE       */
 /* IF YOU NEED THIS, PLEASE DISCUSS WITH OWNER   */
 /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*/
-int conninfra_reg_readable_no_lock(void);
+int conninfra_reg_readable_no_LOCK(void);
 /*
  * 0 : NO hang
  * > 0 : HANG!!
@@ -209,7 +209,7 @@ int conninfra_is_bus_HANG(void);
  *    =0: triggered
  *    =1: ongoing
  */
-int conninfra_trigger_whole_chip_rst(enum consys_drv_type drv, char *reason);
+int conninfra_trigger_whole_chip_RST(enum consys_drv_type drv, char *reason);
 
 /* whole chip reset callback
  * return:
