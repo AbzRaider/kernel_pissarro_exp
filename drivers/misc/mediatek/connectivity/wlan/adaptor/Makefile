@@ -11,7 +11,7 @@ endif
 
 # Force build fail on modpost warning
 KBUILD_MODPOST_FAIL_ON_WARNINGS := y
-
+ccflags-y += -Wno-implicit-function-declaration
 ccflags-y += \
     -I$(srctree)/drivers/misc/mediatek/include/mt-plat \
     -I$(TOP)/drivers/misc/mediatek/connectivity/common/common_main/include \
@@ -25,11 +25,11 @@ ccflags-y += -I$(TOP)/drivers/misc/mediatek/connectivity/conninfra/debug_utility
 ccflags-y += -I$(TOP)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/coredump
 endif
 
-ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
+
 ccflags-y += -DCONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 ccflags-y += -I$(TOP)/drivers/misc/mediatek/connectivity/common/debug_utility
 ccflags-y += -I$(src)/include
-endif
+
 
 ifeq ($(CONFIG_MTK_CONN_LTE_IDC_SUPPORT),y)
     ccflags-y += -DWMT_IDC_SUPPORT=1
