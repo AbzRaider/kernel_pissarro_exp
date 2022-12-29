@@ -109,32 +109,21 @@ endif
 
         # for gen4m options
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export WLAN_CHIP_ID=$(MTK_PLATFORM_ID)
+        export WLAN_CHIP_ID=6877
         export MTK_ANDROID_WMT=y
         export MTK_ANDROID_EMI=y
 
-        WLAN_IP_SET_1_SERIES := 6765 6761 6885 6893
-        WLAN_IP_SET_2_SERIES := 3967 6785
-        WLAN_IP_SET_3_SERIES := 6779 6873 6853
-        ifneq ($(filter $(WLAN_IP_SET_3_SERIES), $(WLAN_CHIP_ID)),)
-            $(info WIFI_IP_SET is 3)
-            export WIFI_IP_SET=3
-        else ifneq ($(filter $(WLAN_IP_SET_2_SERIES), $(WLAN_CHIP_ID)),)
-            $(info WIFI_IP_SET is 2)
-            export WIFI_IP_SET=2
-        else
-            $(info WIFI_IP_SET is 1)
+        
             export WIFI_IP_SET=1
-        endif
+        
 
         # Do build-in for xxx.c checking
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
-        obj-y += wmt_drv/
-        obj-y += wmt_chrdev_wifi/
-        obj-y += wlan_drv_gen4m/
-
-         For BT built-in mode start @{
+        obj-y += conninfra/
+        obj-y += wlan/adaptor/
+        obj-y += wlan/core/gen4m
+         
         ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885"))
              PATH_TO_BT_DRV       = drivers/misc/mediatek/connectivity/bt/mt66xx/btif
            export _MTK_BT_CHIP=MTK_CONSYS_MT6885
@@ -151,11 +140,10 @@ endif
         $(shell unlink $(srctree)/$(src)/bt)
         $(shell ln -s $(ABS_PATH_TO_BT_DRV)      $(srctree)/$(src)/bt)
          obj-y += bt/
-         @} For BT built-in mode end
+         
 
 
-         For FM built-in mode start @{
-         for fmradio options
+         
          ifneq (,$(filter $(CONFIG_MTK_COMBO_CHIP), "CONSYS_6885" "CONSYS_6893" "CONSYS_6877"))
              export CFG_BUILD_CONNAC2=true
          else
@@ -187,9 +175,7 @@ endif
          $(shell unlink $(srctree)/$(src)/gps_drv)
          $(shell ln -s $(ABS_PATH_TO_GPS_DRV)      $(srctree)/$(src)/gps_drv)
          obj-y += gps_drv/
-         @} For GPS built-in mode end
-
-    endif
+         
 
 # Otherwise we were called directly from the command line;
 # invoke the kernel build system.
