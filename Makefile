@@ -71,8 +71,6 @@ unexport GREP_OPTIONS
 # To put more focus on warnings, be less verbose as default
 # Use 'make V=1' to see the full commands
 
-TARGET_BUILD_VARIANT := user
-export TARGET_BUILD_VARIANT
 ifeq ("$(origin V)", "command line")
   KBUILD_VERBOSE = $(V)
 endif
