@@ -1650,7 +1650,7 @@ int hifWmmcuPwrOn(void)
 #if (CFG_SUPPORT_CONNINFRA == 1)
 	/* conninfra power on */
 	if (!kalIsWholeChipResetting()) {
-		ret = conninfra_pwr_on(CONNDRV_TYPE_WIFI);
+		ret = conninfra_pwr_ON(CONNDRV_TYPE_WIFI);
 		if (ret == CONNINFRA_ERR_RST_ONGOING) {
 			DBGLOG(INIT, ERROR,
 				"Conninfra is doing whole chip reset.\n");
@@ -1706,7 +1706,7 @@ int hifWmmcuPwrOff(void)
 	 * conninfra will do conninfra power off self during whole chip reset.
 	 */
 	if (!kalIsWholeChipResetting()) {
-		ret = conninfra_pwr_off(CONNDRV_TYPE_WIFI);
+		ret = conninfra_pwr_OFF(CONNDRV_TYPE_WIFI);
 		if (ret != 0)
 			return ret;
 	}
@@ -1824,7 +1824,7 @@ int wlanConnacPccifoff(void)
 
 int soc5_0_Trigger_whole_chip_rst(char *reason)
 {
-	return conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_WIFI, reason);
+	return conninfra_trigger_whole_chip_RST(CONNDRV_TYPE_WIFI, reason);
 }
 
 bool soc5_0_Sw_interrupt_handler(struct ADAPTER *prAdapter)
@@ -1870,9 +1870,9 @@ bool soc5_0_Sw_interrupt_handler(struct ADAPTER *prAdapter)
 	if (check != 0) {
 		DBGLOG(HAL, ERROR, "Polling CONNSYS version ID fail.\n");
 
-		if (!conninfra_reg_readable()) {
+		if (!conninfra_reg_Readable()) {
 			DBGLOG(HAL, ERROR,
-				"conninfra_reg_readable fail\n");
+				"conninfra_reg_Readable fail\n");
 #if (CFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT == 1)
 			g_eWfRstSource = WF_RST_SOURCE_FW;
 			if (!prAdapter->prGlueInfo->u4ReadyFlag)
@@ -3831,11 +3831,11 @@ static int soc5_0_CheckBusHang(void *adapter, uint8_t ucWfResetEnable)
  * 1. Check "AP2CONN_INFRA ON step is ok"
  *   & Check "AP2CONN_INFRA OFF step is ok"
  */
-		conninfra_read_ret = conninfra_reg_readable();
+		conninfra_read_ret = conninfra_reg_Readable();
 		conninfra_hang_ret = conninfra_is_bus_HANG();
 		if (!conninfra_read_ret) {
 			DBGLOG(HAL, ERROR,
-				"conninfra_reg_readable fail(%d)\n",
+				"conninfra_reg_Readable fail(%d)\n",
 				conninfra_read_ret);
 
 			if (conninfra_hang_ret > 0) {
@@ -3899,11 +3899,11 @@ static int soc5_0_CheckBusHang(void *adapter, uint8_t ucWfResetEnable)
 
 		if (conninfra_reset) {
 			g_IsWfsysBusHang = TRUE;
-			conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_WIFI,
+			conninfra_trigger_whole_chip_RST(CONNDRV_TYPE_WIFI,
 				"bus hang");
 		} else if (ucWfResetEnable) {
 			g_IsWfsysBusHang = TRUE;
-			conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_WIFI,
+			conninfra_trigger_whole_chip_RST(CONNDRV_TYPE_WIFI,
 				"wifi bus hang");
 		}
 	}
