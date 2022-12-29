@@ -191,7 +191,7 @@ int conninfra_is_bus_HANG(void)
 }
 EXPORT_SYMBOL(conninfra_is_bus_HANG);
 
-int conninfra_trigger_whole_chip_RST(enum consys_drv_type who, char *reason)
+int conninfra_trigger_whole_chip_rst(enum consys_drv_type who, char *reason)
 {
 	/* use schedule worker to trigger ??? */
 	/* so that function can be returned immediately */
@@ -209,7 +209,7 @@ int conninfra_trigger_whole_chip_RST(enum consys_drv_type who, char *reason)
 
 	return 0;
 }
-EXPORT_SYMBOL(conninfra_trigger_whole_chip_RST);
+EXPORT_SYMBOL(conninfra_trigger_whole_chip_rst);
 
 int conninfra_sub_drv_ops_registeR(enum consys_drv_type type,
 				struct sub_drv_ops_cb *cb)

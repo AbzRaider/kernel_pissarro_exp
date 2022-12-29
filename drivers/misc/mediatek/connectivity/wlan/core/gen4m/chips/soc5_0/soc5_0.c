@@ -1822,9 +1822,9 @@ int wlanConnacPccifoff(void)
 	return ret;
 }
 
-int soc5_0_Trigger_whole_chip_RST(char *reason)
+int soc5_0_Trigger_whole_chip_rst(char *reason)
 {
-	return conninfra_trigger_whole_chip_RST(CONNDRV_TYPE_WIFI, reason);
+	return conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_WIFI, reason);
 }
 
 bool soc5_0_Sw_interrupt_handler(struct ADAPTER *prAdapter)
@@ -3899,11 +3899,11 @@ static int soc5_0_CheckBusHang(void *adapter, uint8_t ucWfResetEnable)
 
 		if (conninfra_reset) {
 			g_IsWfsysBusHang = TRUE;
-			conninfra_trigger_whole_chip_RST(CONNDRV_TYPE_WIFI,
+			conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_WIFI,
 				"bus hang");
 		} else if (ucWfResetEnable) {
 			g_IsWfsysBusHang = TRUE;
-			conninfra_trigger_whole_chip_RST(CONNDRV_TYPE_WIFI,
+			conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_WIFI,
 				"wifi bus hang");
 		}
 	}

@@ -221,8 +221,8 @@ int fw_log_reg_readable(void)
 {
 	int ret = 1;
 
-	if (conninfra_reg_readable() == 0) {
-		WIFI_INFO_FUNC("conninfra_reg_readable: 0\n");
+	if (conninfra_reg_Readable() == 0) {
+		WIFI_INFO_FUNC("conninfra_reg_Readable: 0\n");
 		ret = 0;
 	}
 

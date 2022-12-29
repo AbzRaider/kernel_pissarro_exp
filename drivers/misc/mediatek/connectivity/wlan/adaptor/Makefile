@@ -26,7 +26,6 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_uti
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/connsyslog
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/coredump
 endif
-ccflags-y += -Wno-implicit-function-declaration
 ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
 ccflags-y += -DCONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common/debug_utility

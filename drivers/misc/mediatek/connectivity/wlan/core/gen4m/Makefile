@@ -14,7 +14,6 @@ ccflags-y += -Wno-format
 ccflags-y += -Wno-parentheses
 ccflags-y += -Wno-invalid-pp-token
 ccflags-y += -Wno-macro-redefined
-ccflags-y += -Wno-implicit-function-declaration
 ifeq ($(os), none)
 ccflags-y += -I/usr/include/
 ccflags-y += -DCFG_VIRTUAL_OS

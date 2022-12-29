@@ -209,7 +209,7 @@ int conninfra_is_bus_HANG(void);
  *    =0: triggered
  *    =1: ongoing
  */
-int conninfra_trigger_whole_chip_RST(enum consys_drv_type drv, char *reason);
+int conninfra_trigger_whole_chip_rst(enum consys_drv_type drv, char *reason);
 
 /* whole chip reset callback
  * return:
