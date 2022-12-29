@@ -572,7 +572,7 @@ struct mt66xx_chip_info mt66xx_chip_info_soc5_0 = {
 #if (CFG_SUPPORT_CONNINFRA == 1)
 	.coexpccifon = wlanConnacPccifon,
 	.coexpccifoff = wlanConnacPccifoff,
-	.trigger_wholechiprst = soc5_0_Trigger_whole_chip_RST,
+	.trigger_wholechiprst = soc5_0_Trigger_whole_chip_rst,
 	.sw_interrupt_handler = soc5_0_Sw_interrupt_handler,
 	.conninra_cb_register = soc5_0_Conninfra_cb_register,
 #endif
