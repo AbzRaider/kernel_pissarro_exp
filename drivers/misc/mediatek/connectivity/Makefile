@@ -134,9 +134,7 @@ endif
          $(shell unlink $(srctree)/$(src)/fmradio)
          $(shell ln -s $(ABS_PATH_TO_FMRADIO_DRV)      $(srctree)/$(src)/fmradio)
          obj-y += fmradio/
-         @} For FM built-in mode end
-
-         For GPS built-in mode start @{
+         
          PATH_TO_GPS_DRV      = drivers/misc/mediatek/connectivity/gps
          ABS_PATH_TO_GPS_DRV      = $(srctree)/../$(PATH_TO_GPS_DRV)
          ifeq (,$(wildcard $(ABS_PATH_TO_GPS_DRV)))
