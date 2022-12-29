@@ -80,7 +80,7 @@ enum connsys_spi_speed_type {
 	CONNSYS_SPI_SPEED_MAX
 };
 
-enum connsys_clock_schematic
+enum connsys_clock_scheMATIC
 {
 	CONNSYS_CLOCK_SCHEMATIC_26M_COTMS = 0,
 	CONNSYS_CLOCK_SCHEMATIC_52M_COTMS,
