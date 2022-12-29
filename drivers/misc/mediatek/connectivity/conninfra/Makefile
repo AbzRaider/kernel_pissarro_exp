@@ -1,4 +1,4 @@
-MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
+MTK_PLATFORM := mt6853
 ###############################################################################
 # Necessary Check
 
@@ -170,7 +170,6 @@ $(MODULE_NAME)-objs += test/mailbox_test.o
 $(MODULE_NAME)-objs += test/connsyslog_test.o
 $(MODULE_NAME)-objs += test/dump_test.o
 endif
-ccflags-y += -D CONNINFRA_PLAT_BUILD_MODE=3
 $(MODULE_NAME)-objs += platform/consys_hw_plat_data.o
 ccflags-y += -I$(src)/debug_utility/metlog
 ccflags-y += -I$(src)/platform/$(CONNSYS_PLATFORM)/include/CODA
