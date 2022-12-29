@@ -271,7 +271,7 @@ static irqreturn_t mtk_pci_interrupt(int irq, void *dev_instance)
 
 	halDisableInterrupt(prGlueInfo->prAdapter);
 
-	if (prGlueInfo->ulFlag & GLUE_FLAG_HALT) {
+	if (test_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag)) {
 		DBGLOG(HAL, INFO, "GLUE_FLAG_HALT skip INT\n");
 		return IRQ_NONE;
 	}
@@ -307,12 +307,6 @@ static int mtk_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		DBGLOG(INIT, INFO, "pci_enable_device failed!\n");
 		goto out;
 	}
-
-#if defined(SOC3_0)
-	if ((void *)&mt66xx_driver_data_soc3_0 == (void *)id->driver_data)
-		DBGLOG(INIT, INFO,
-			"[MJ]&mt66xx_driver_data_soc3_0 == id->driver_data\n");
-#endif
 
 	DBGLOG(INIT, INFO, "pci_enable_device done!\n");
 
@@ -711,6 +705,9 @@ static void *pcieAllocRxBuf(struct GL_HIF_INFO *prHifInfo,
 		return NULL;
 	}
 
+#ifdef CFG_SUPPORT_SNIFFER_RADIOTAP
+	skb_reserve(pkt, CFG_RADIOTAP_HEADROOM);
+#endif
 	prDmaBuf->AllocVa = (void *)pkt->data;
 	memset(prDmaBuf->AllocVa, 0, prDmaBuf->AllocSize);
 

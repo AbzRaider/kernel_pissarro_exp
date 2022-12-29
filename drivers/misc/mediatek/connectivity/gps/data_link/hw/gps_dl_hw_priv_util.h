@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #ifndef _GPS_DL_HW_UTIL_H
 #define _GPS_DL_HW_UTIL_H
 
@@ -35,6 +28,7 @@ enum gps_dl_bus_rw_opt_enum {
 #define BMASK_RW_DO_CHECK     (1UL << RW_DO_CHECK)
 #define BMASK_RW_FORCE_PRINT  (1UL << RW_FORCE_PRINT)
 #define BMASK_RW_FULL_PRINT   (1UL << RW_FULL_PRINT)
+#define BMASK_RW_NONEED_PRINT (0) /*do not print*/
 
 void gps_dl_bus_wr_opt(enum GPS_DL_BUS_ENUM bus_id, unsigned int bus_addr, unsigned int val,
 	unsigned int opt_bitmask);
@@ -106,10 +100,12 @@ unsigned int gps_dl_bus_read(enum GPS_DL_BUS_ENUM bus_id, unsigned int bus_addr)
 	((Val & (MASK(Field))) >> SHFT(Field))
 
 #define POLL_INTERVAL_US (100)
-#define POLL_US      (1)
-#define POLL_1_TIME  (0)
-#define POLL_FOREVER (-1)
-#define POLL_DEFAULT (1000 * POLL_US)
+#define POLL_US       (1)
+#define POLL_1_TIME   (0)
+#define POLL_FOREVER  (-1)
+#define POLL_DEFAULT  (1000 * POLL_US)
+#define POLL_DEFAULT2 (500 * POLL_US)
+
 #if (GPS_DL_ON_CTP || GPS_DL_ON_LINUX)
 #define GDL_HW_POLL_ENTRY_VERBOSE(Bus_ID, Field, pIsOkay, pLastValue, TimeoutUsec, condExpected) \
 	do {                                                                       \

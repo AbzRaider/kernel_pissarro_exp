@@ -370,7 +370,7 @@ static INT32 wmt_conf_parse_byte_array(P_DEV_WMT pWmtDev,
 		WMT_ERR_FUNC("wmtcfg==> %s has no value assigned\n",
 			data->name);
 		return -1;
-	} else if (size & 0x1) {
+	} else if (osal_strlen(pos) & 0x1) {
 		WMT_ERR_FUNC("wmtcfg==> %s, length should be even\n", data->name);
 		return -1;
 	}
@@ -695,3 +695,16 @@ INT32 wmt_conf_deinit(VOID)
 	return 0;
 }
 
+void wmt_set_bt_tssi_target(int value)
+{
+	P_WMT_GEN_CONF pWmtGenConf = wmt_conf_get_cfg();
+
+	if (pWmtGenConf == NULL) {
+		WMT_INFO_FUNC("pWmtGenConf == NULL!!\n");
+		return;
+	}
+
+	pWmtGenConf->bt_tssi_target = value;
+	WMT_INFO_FUNC("bt_tssi_target = %d\n", value);
+}
+EXPORT_SYMBOL(wmt_set_bt_tssi_target);

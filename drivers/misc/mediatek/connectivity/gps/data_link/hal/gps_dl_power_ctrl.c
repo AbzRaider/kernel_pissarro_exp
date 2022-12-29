@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 #include "gps_dl_context.h"
 
@@ -153,6 +146,7 @@ int gps_dl_hal_link_power_ctrl(enum gps_dl_link_id_enum link_id,
 	if (!wakeup_okay && conninfra_okay) {
 #if (GPS_DL_HAS_CONNINFRA_DRV)
 		int trigger_ret;
+
 		trigger_ret = conninfra_trigger_whole_chip_rst(CONNDRV_TYPE_GPS, "GPS conninfra wake fail");
 		GDL_LOGXE(link_id, "conninfra wake fail, trigger reset ret = %d", trigger_ret);
 #else
@@ -224,29 +218,46 @@ int gps_dl_hal_link_power_ctrl_inner(enum gps_dl_link_id_enum link_id,
 	} else if (3 == op || 5 == op) {
 		gps_dl_lna_pin_ctrl(link_id, true, false);
 		if (GPS_DATA_LINK_ID0 == link_id) {
-			if (3 == op)
+			if (3 == op) {
 				gps_dl_hw_gps_dsp_ctrl(GPS_L1_DSP_EXIT_DSLEEP);
-			else if (5 == op)
+				g_gps_dsp_off_ret_array[link_id] = 0;
+			} else if (5 == op) {
 				gps_dl_hw_gps_dsp_ctrl(GPS_L1_DSP_EXIT_DSTOP);
+				g_gps_dsp_off_ret_array[link_id] = 0;
+			}
 		} else if (GPS_DATA_LINK_ID1 == link_id) {
-			if (3 == op)
+			if (3 == op) {
 				gps_dl_hw_gps_dsp_ctrl(GPS_L5_DSP_EXIT_DSLEEP);
-			else if (5 == op)
+				g_gps_dsp_off_ret_array[link_id] = 0;
+			} else if (5 == op) {
 				gps_dl_hw_gps_dsp_ctrl(GPS_L5_DSP_EXIT_DSTOP);
+				g_gps_dsp_off_ret_array[link_id] = 0;
+			}
 		}
 		return 0;
 	} else if (2 == op || 4 == op) {
 		if (GPS_DATA_LINK_ID0 == link_id) {
 			if (2 == op)
-				gps_dl_hw_gps_dsp_ctrl(GPS_L1_DSP_ENTER_DSLEEP);
+				g_gps_dsp_off_ret_array[link_id] = gps_dl_hw_gps_dsp_ctrl(GPS_L1_DSP_ENTER_DSLEEP);
 			else if (4 == op)
-				gps_dl_hw_gps_dsp_ctrl(GPS_L1_DSP_ENTER_DSTOP);
+				g_gps_dsp_off_ret_array[link_id] = gps_dl_hw_gps_dsp_ctrl(GPS_L1_DSP_ENTER_DSTOP);
+
 		} else if (GPS_DATA_LINK_ID1 == link_id) {
 			if (2 == op)
-				gps_dl_hw_gps_dsp_ctrl(GPS_L5_DSP_ENTER_DSLEEP);
+				g_gps_dsp_off_ret_array[link_id] = gps_dl_hw_gps_dsp_ctrl(GPS_L5_DSP_ENTER_DSLEEP);
 			else if (4 == op)
-				gps_dl_hw_gps_dsp_ctrl(GPS_L5_DSP_ENTER_DSTOP);
+				g_gps_dsp_off_ret_array[link_id] = gps_dl_hw_gps_dsp_ctrl(GPS_L5_DSP_ENTER_DSTOP);
 		}
+
+		/*force adie off when enter deep stop mode timeout*/
+		if ((g_gps_dsp_off_ret_array[GPS_DATA_LINK_ID0] != 0) ||
+				(g_gps_dsp_off_ret_array[GPS_DATA_LINK_ID1] != 0)) {
+			GDL_LOGXE(link_id, "l1 ret = %d, l5 ret = %d, enter deep stop mode with force adie off",
+				g_gps_dsp_off_ret_array[GPS_DATA_LINK_ID0],
+				g_gps_dsp_off_ret_array[GPS_DATA_LINK_ID1]);
+			gps_dl_hw_gps_adie_force_off();
+		}
+
 		gps_dl_lna_pin_ctrl(link_id, false, false);
 		return 0;
 	} else if (0 == op) {
@@ -334,7 +345,6 @@ int gps_dl_hal_conn_power_ctrl(enum gps_dl_link_id_enum link_id, int op)
 				return -1;
 
 			gps_dl_hal_load_clock_flag();
-			gps_dl_emi_remap_calc_and_set();
 #if GPS_DL_HAS_PLAT_DRV
 			gps_dl_wake_lock_hold(true);
 #if GPS_DL_USE_TIA
@@ -494,9 +504,11 @@ void gps_dl_hal_conn_infra_driver_debug_dump(void)
 }
 
 #if GPS_DL_HAS_PTA
+#if GPS_DL_BLANKING_KEEP_IDC_MODE
 bool gps_dl_hal_md_blanking_init_pta_idc_mode(void)
 {
-	bool okay, done;
+	bool okay = false;
+	bool done = false;
 
 	/* do pta uart init firstly */
 	done = gps_dl_hw_is_pta_uart_init_done();
@@ -520,6 +532,7 @@ bool gps_dl_hal_md_blanking_init_pta_idc_mode(void)
 	gps_dl_hw_set_pta_blanking_parameter(false);
 	return true;
 }
+#endif
 
 void gps_dl_hal_md_blanking_init_pta_direct_path(void)
 {
@@ -570,6 +583,7 @@ bool gps_dl_hal_md_blanking_init_pta(void)
 		}
 	}
 
+#if GPS_DL_BLANKING_KEEP_IDC_MODE
 	if (setting_val == USE_PTA_IDC_MODE) {
 		/* idc mode */
 		okay = gps_dl_hal_md_blanking_init_pta_idc_mode();
@@ -577,7 +591,9 @@ bool gps_dl_hal_md_blanking_init_pta(void)
 			gps_dl_hw_give_conn_coex_hw_sema();
 			return false;
 		}
-	} else if (setting_val == USE_PTA_DIRECT_PATH) {
+	} else
+#endif
+	if (setting_val == USE_PTA_DIRECT_PATH) {
 		/* direct path */
 		gps_dl_hal_md_blanking_init_pta_direct_path();
 	}

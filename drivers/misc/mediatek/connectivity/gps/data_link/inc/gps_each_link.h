@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #ifndef _GPS_EACH_LINK_H
 #define _GPS_EACH_LINK_H
 
@@ -101,6 +94,7 @@ enum gps_each_link_mutex {
 	GPS_DL_MTX_NUM
 };
 
+bool gps_each_link_mutex_take2(enum gps_dl_link_id_enum link_id, enum gps_each_link_mutex mtx_id);
 void gps_each_link_mutex_take(enum gps_dl_link_id_enum link_id, enum gps_each_link_mutex mtx_id);
 void gps_each_link_mutex_give(enum gps_dl_link_id_enum link_id, enum gps_each_link_mutex mtx_id);
 
@@ -258,6 +252,8 @@ void gps_dl_link_event_proc(enum gps_dl_link_event_id evt,
 
 void gps_dl_link_irq_set(enum gps_dl_link_id_enum link_id, bool enable);
 void gps_dl_link_pre_off_setting(enum gps_dl_link_id_enum link_id);
+void gps_dl_link_post_enter_dpstop_setting(enum gps_dl_link_id_enum link_id);
+void gps_dl_link_pre_leave_dpstop_setting(enum gps_dl_link_id_enum link_id);
 
 void gps_dl_link_open_wait(enum gps_dl_link_id_enum link_id, long *p_sigval);
 void gps_dl_link_open_ack(enum gps_dl_link_id_enum link_id, bool okay, bool hw_resume);

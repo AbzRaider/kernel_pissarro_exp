@@ -54,6 +54,7 @@
 */
 
 typedef int(*CONSYS_PLT_CLK_GET_FROM_DTS) (struct platform_device *pdev);
+typedef int(*CONSYS_PLT_CLK_DETACH) (void);
 typedef int(*CONSYS_PLT_READ_REG_FROM_DTS) (struct platform_device *pdev);
 
 typedef int(*CONSYS_PLT_CLOCK_BUFFER_CTRL) (unsigned int enable);
@@ -64,6 +65,7 @@ typedef int(*CONSYS_PLT_POLLING_CONSYS_CHIPID) (void);
 typedef int(*CONSYS_PLT_D_DIE_CFG) (void);
 typedef int(*CONSYS_PLT_SPI_MASTER_CFG) (unsigned int next_status);
 typedef int(*CONSYS_PLT_A_DIE_CFG) (void);
+typedef void(*CONSYS_PLT_AFE_SW_PATCH) (void);
 typedef int(*CONSYS_PLT_AFE_WBG_CAL) (void);
 typedef int(*CONSYS_PLT_SUBSYS_PLL_INITIAL) (void);
 typedef int(*CONSYS_PLT_LOW_POWER_SETTING) (unsigned int curr_status, unsigned int next_status);
@@ -83,6 +85,7 @@ typedef int(*CONSYS_PLT_IS_CONNSYS_REG) (unsigned int addr);
 
 typedef int(*CONSYS_PLT_SPI_READ)(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 typedef int(*CONSYS_PLT_SPI_WRITE)(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
+typedef int(*CONSYS_PLT_SPI_UPDATE_BITS)(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask);
 
 typedef int(*CONSYS_PLT_ADIE_TOP_CK_EN_ON)(enum consys_adie_ctl_type type);
 typedef int(*CONSYS_PLT_ADIE_TOP_CK_EN_OFF)(enum consys_adie_ctl_type type);
@@ -97,16 +100,24 @@ typedef int(*CONSYS_PLT_THERMAL_QUERY)(void);
 
 typedef int(*CONSYS_PLT_ENABLE_POWER_DUMP)(void);
 typedef int(*CONSYS_PLT_RESET_POWER_STATE)(void);
-typedef int(*CONSYS_PLT_POWER_STATE)(void);
+typedef int(*CONSYS_PLT_POWER_STATE)(char *buf, unsigned int size);
 
 typedef void(*CONSYS_PLT_CONFIG_SETUP)(void);
 
 typedef int(*CONSYS_PLT_BUS_CLOCK_CTRL)(enum consys_drv_type drv_type, unsigned int, int);
 typedef u64(*CONSYS_PLT_SOC_TIMESTAMP_GET)(void);
 
+typedef unsigned int (*CONSYS_PLT_ADIE_DETECTION)(void);
+
+typedef void (*CONSYS_PLT_SET_MCU_CONTROL)(int type, bool onoff);
+
+typedef int (*CONSYS_PLT_PRE_CAL_BACKUP)(unsigned int offset, unsigned int size);
+typedef int (*CONSYS_PLT_PRE_CAL_CLEAN_DATA)(void);
+
 struct consys_hw_ops_struct {
 	/* load from dts */
 	CONSYS_PLT_CLK_GET_FROM_DTS consys_plt_clk_get_from_dts;
+	CONSYS_PLT_CLK_DETACH consys_plt_clk_detach;
 
 	/* clock */
 	CONSYS_PLT_CLOCK_BUFFER_CTRL consys_plt_clock_buffer_ctrl;
@@ -120,6 +131,7 @@ struct consys_hw_ops_struct {
 	CONSYS_PLT_D_DIE_CFG consys_plt_d_die_cfg;
 	CONSYS_PLT_SPI_MASTER_CFG consys_plt_spi_master_cfg;
 	CONSYS_PLT_A_DIE_CFG consys_plt_a_die_cfg;
+	CONSYS_PLT_AFE_SW_PATCH consys_plt_afe_sw_patch;
 	CONSYS_PLT_AFE_WBG_CAL consys_plt_afe_wbg_cal;
 	CONSYS_PLT_SUBSYS_PLL_INITIAL consys_plt_subsys_pll_initial;
 	CONSYS_PLT_LOW_POWER_SETTING consys_plt_low_power_setting;
@@ -139,6 +151,7 @@ struct consys_hw_ops_struct {
 	/* For SPI operation */
 	CONSYS_PLT_SPI_READ consys_plt_spi_read;
 	CONSYS_PLT_SPI_WRITE consys_plt_spi_write;
+	CONSYS_PLT_SPI_UPDATE_BITS consys_plt_spi_update_bits;
 
 	/* For a-die top_ck_en control */
 	CONSYS_PLT_ADIE_TOP_CK_EN_ON consys_plt_adie_top_ck_en_on;
@@ -161,6 +174,13 @@ struct consys_hw_ops_struct {
 	CONSYS_PLT_BUS_CLOCK_CTRL consys_plt_bus_clock_ctrl;
 
 	CONSYS_PLT_SOC_TIMESTAMP_GET consys_plt_soc_timestamp_get;
+
+	CONSYS_PLT_ADIE_DETECTION consys_plt_adie_detection;
+
+	CONSYS_PLT_SET_MCU_CONTROL consys_plt_set_mcu_control;
+
+	CONSYS_PLT_PRE_CAL_BACKUP consys_plt_pre_cal_backup;
+	CONSYS_PLT_PRE_CAL_CLEAN_DATA consys_plt_pre_cal_clean_data;
 };
 
 struct conninfra_dev_cb {
@@ -182,6 +202,8 @@ struct conninfra_plat_data {
 	const void* reg_ops;
 	const void* platform_emi_ops;
 	const void* platform_pmic_ops;
+	const void* platform_coredump_ops;
+	const void* connsyslog_config;
 };
 
 extern struct consys_hw_env conn_hw_env;
@@ -225,6 +247,7 @@ unsigned int consys_hw_get_hw_ver(void);
  * -1: not consys register
  */
 int consys_hw_reg_readable(void);
+int consys_hw_reg_readable_for_coredump(void);
 int consys_hw_is_connsys_reg(phys_addr_t addr);
 /*
  * 0 means NO hang
@@ -235,6 +258,7 @@ int consys_hw_dump_bus_status(void);
 
 int consys_hw_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 int consys_hw_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
+int consys_hw_spi_update_bits(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask);
 
 int consys_hw_adie_top_ck_en_on(enum consys_adie_ctl_type type);
 int consys_hw_adie_top_ck_en_off(enum consys_adie_ctl_type type);
@@ -254,7 +278,7 @@ void consys_hw_clock_fail_dump(void);
 /* Low debug */
 int consys_hw_enable_power_dump(void);
 int consys_hw_reset_power_state(void);
-int consys_hw_dump_power_state(void);
+int consys_hw_dump_power_state(char *buf, unsigned int size);
 
 
 void consys_hw_config_setup(void);
@@ -269,6 +293,20 @@ int consys_hw_raise_voltage(enum consys_drv_type drv_type, bool raise, bool onof
  * unit: ms
  */
 u64 consys_hw_soc_timestamp_get(void);
+
+// Auto a-die detection
+unsigned int consys_hw_detect_adie_chipid(void);
+unsigned int consys_hw_get_ic_info(enum connsys_ic_info_type type);
+
+int consys_hw_set_platform_config(int value);
+int consys_hw_get_platform_config(void);
+
+void consys_hw_set_mcu_control(int type, bool onoff);
+
+/* Pre-cal */
+int consys_hw_pre_cal_backup(unsigned int offset, unsigned int size);
+int consys_hw_pre_cal_clean_data(void);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

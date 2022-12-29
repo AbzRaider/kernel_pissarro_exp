@@ -23,6 +23,13 @@
 
 #include "consys_hw.h"
 
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#define COMMON_KERNEL_PMIC_SUPPORT	1
+#else
+#define COMMON_KERNEL_PMIC_SUPPORT	0
+#endif
+
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
@@ -81,6 +88,12 @@ struct consys_platform_pmic_ops {
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+#if COMMON_KERNEL_PMIC_SUPPORT
+extern struct regmap *g_regmap;
+extern struct regmap *g_regmap_mt6363;
+extern struct regmap *g_regmap_mt6373;
+extern struct regmap *g_regmap_mt6368;
+#endif
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -94,6 +107,7 @@ struct consys_platform_pmic_ops {
 
 int pmic_mng_init(struct platform_device *pdev, struct conninfra_dev_cb* dev_cb, const struct conninfra_plat_data* plat_data);
 int pmic_mng_deinit(void);
+int pmic_mng_register_device(void);
 
 int pmic_mng_common_power_ctrl(unsigned int enable);
 int pmic_mng_common_power_low_power_mode(unsigned int enable);

@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 #include "gps_dl_context.h"
 
@@ -32,6 +25,7 @@ void gps_dma_buf_reset(struct gps_dl_dma_buf *p_dma)
 	p_dma->write_index = 0;
 	p_dma->writer_working = 0;
 	p_dma->dma_working_entry.is_valid = false;
+	p_dma->dma_working_counter = 0;
 	p_dma->entry_r = 0;
 	p_dma->entry_w = 0;
 	memset(&p_dma->data_entries[0], 0, sizeof(p_dma->data_entries));
@@ -437,6 +431,7 @@ static enum GDL_RET_STATUS gdl_dma_buf_set_free_entry_inner(struct gps_dl_dma_bu
 	if (GDL_COUNT_FREE(p_dma->entry_r, p_dma->entry_w, GPS_DL_DMA_BUF_ENTRY_MAX) <= 1) {
 		/* impossible due to get_free_entry already check it */
 		p_dma->writer_working = false;
+		GDL_LOGI("DMA_entry_r_index = %d, DMA_entry_w_index = %d,", p_dma->entry_r, p_dma->entry_w);
 		return GDL_FAIL_NOENTRY2;
 	}
 
@@ -704,7 +699,11 @@ enum GDL_RET_STATUS gdl_dma_buf_entry_transfer_left_to_write_index(
 	free_len = GDL_COUNT_FREE(p_entry->read_index,
 		p_entry->write_index, p_entry->buf_length);
 
-	GDL_ASSERT(free_len > left_len, GDL_FAIL_ASSERT, "");
+	/*dsp will trigger twice nodata irq*/
+	if (free_len <= left_len) {
+		GDL_LOGI("free_len <= left_len, free_len = %d, left_len = %d", free_len, left_len);
+		return GDL_FAIL_NODATA;
+	}
 
 	new_write_index = p_entry->write_index + free_len - left_len;
 	if (new_write_index >= p_entry->buf_length)

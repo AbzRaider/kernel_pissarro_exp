@@ -5,6 +5,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "@(%s:%d) " fmt, __func__, __LINE__
 
+#include <linux/version.h>
 #include <linux/memblock.h>
 #include <linux/platform_device.h>
 #ifdef CONFIG_MTK_EMI
@@ -12,7 +13,11 @@
 #endif
 #include <linux/of_reserved_mem.h>
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#include <soc/mediatek/emi.h>
+#else
 #include <memory/mediatek/emi.h>
+#endif
 #include "mt6893_emi.h"
 #include "mt6893.h"
 #include "mt6893_consys_reg.h"
@@ -57,6 +62,8 @@
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
+static int consys_emi_mpu_set_region_protection_mt6893(void);
+
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -66,9 +73,9 @@ extern unsigned long long gConEmiSize;
 extern phys_addr_t gConEmiPhyBase;
 
 struct consys_platform_emi_ops g_consys_platform_emi_ops_mt6893 = {
-	.consys_ic_emi_mpu_set_region_protection = consys_emi_mpu_set_region_protection,
+	.consys_ic_emi_mpu_set_region_protection = consys_emi_mpu_set_region_protection_mt6893,
 	.consys_ic_emi_set_remapping_reg = consys_emi_set_remapping_reg_mt6893,
-	.consys_ic_emi_get_md_shared_emi = consys_emi_get_md_shared_emi,
+	.consys_ic_emi_get_md_shared_emi = consys_emi_get_md_shared_emi_mt6893,
 };
 
 /*******************************************************************************
@@ -81,8 +88,9 @@ struct consys_platform_emi_ops g_consys_platform_emi_ops_mt6893 = {
 ********************************************************************************
 */
 
-int consys_emi_mpu_set_region_protection(void)
+static int consys_emi_mpu_set_region_protection_mt6893(void)
 {
+#if IS_ENABLED(CONFIG_MEDIATEK_EMI) || IS_ENABLED(CONFIG_MTK_EMI)
 	struct emimpu_region_t region;
 	unsigned long long start = gConEmiPhyBase;
 	unsigned long long end = gConEmiPhyBase + gConEmiSize - 1;
@@ -97,15 +105,16 @@ int consys_emi_mpu_set_region_protection(void)
 	mtk_emimpu_free_region(&region);
 
 	pr_info("setting MPU for EMI share memory\n");
+#endif
 	return 0;
 }
 
-void consys_emi_get_md_shared_emi(phys_addr_t* base, unsigned int* size)
+void consys_emi_get_md_shared_emi_mt6893(phys_addr_t* base, unsigned int* size)
 {
 	phys_addr_t mdPhy = 0;
 	int ret = 0;
 
-#ifdef CONFIG_MTK_ECCCI_DRIVER
+#if IS_ENABLED(CONFIG_MTK_ECCCI_DRIVER)
 	mdPhy = get_smem_phy_start_addr(MD_SYS1, SMEM_USER_RAW_MD_CONSYS, &ret);
 	pr_info("MCIF base=0x%llx size=0x%x", mdPhy, ret);
 #else

@@ -130,6 +130,10 @@ static INT32 wmt_dbg_thermal_ctrl(INT32 par1, INT32 par2, INT32 par3);
 
 static INT32 wmt_dbg_gps_suspend(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_set_bt_link_status(INT32 par1, INT32 par2, INT32 par3);
+static INT32 wmt_dbg_set_bt_rssi(INT32 par1, INT32 par2, INT32 par3);
+
+static int wmt_dbg_clk_reg_read(INT32 par1, INT32 par2, INT32 par3);
+static int wmt_dbg_clk_reg_write(INT32 par1, INT32 par2, INT32 par3);
 
 static const WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] = {
 	[0x0] = wmt_dbg_psm_ctrl,
@@ -190,6 +194,9 @@ static const WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] = {
 	[0x30] = wmt_dbg_show_thread_debug_info,
 	[0x31] = wmt_dbg_gps_suspend,
 	[0x32] = wmt_dbg_alarm_ctrl,
+	[0x33] = wmt_dbg_clk_reg_read,
+	[0x34] = wmt_dbg_clk_reg_write,
+	[0xa1] = wmt_dbg_set_bt_rssi,
 };
 
 static VOID wmt_dbg_fwinfor_print_buff(UINT32 len)
@@ -681,7 +688,7 @@ static INT32 wmt_dbg_ap_reg_read(INT32 par1, INT32 par2, INT32 par3)
 	PUINT8 ap_reg_base = NULL;
 
 	WMT_INFO_FUNC("AP register read, reg address:0x%x\n", par2);
-	ap_reg_base = ioremap_nocache(par2, 0x4);
+	ap_reg_base = ioremap(par2, 0x4);
 	if (ap_reg_base) {
 		value = readl(ap_reg_base);
 		WMT_INFO_FUNC("AP register read, reg address:0x%x, value:0x%x\n", par2, value);
@@ -699,7 +706,7 @@ static INT32 wmt_dbg_ap_reg_write(INT32 par1, INT32 par2, INT32 par3)
 
 	WMT_INFO_FUNC("AP register write, reg address:0x%x, value:0x%x\n", par2, par3);
 
-	ap_reg_base = ioremap_nocache(par2, 0x4);
+	ap_reg_base = ioremap(par2, 0x4);
 	if (ap_reg_base) {
 		writel(par3, ap_reg_base);
 		value = readl(ap_reg_base);
@@ -754,6 +761,49 @@ static INT32 wmt_dbg_set_bt_link_status(INT32 par1, INT32 par2, INT32 par3)
 		return 0;
 
 	wmt_lib_set_bt_link_status(par2, par3);
+	return 0;
+}
+
+static int wmt_dbg_clk_reg_read(INT32 par1, INT32 par2, INT32 par3)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+	int value = 0;
+	struct regmap *map = (struct regmap *)wmt_lib_consys_clock_get_regmap();
+
+	pr_info("%s clock ic register read, reg address:0x%x\n", __func__, par2);
+	if (map == NULL) {
+		pr_notice("%s clock ic regmap is NULL.\n", __func__);
+		return 0;
+	}
+	regmap_read(map, par2, &value);
+	pr_info("%s clock ic register read, reg address:0x%x, value:0x%x\n", __func__, par2, value);
+#endif
+
+	return 0;
+}
+
+static int wmt_dbg_clk_reg_write(INT32 par1, INT32 par2, INT32 par3)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
+	int value = 0;
+	struct regmap *map = (struct regmap *)wmt_lib_consys_clock_get_regmap();
+
+	pr_info("%s clock ic register write, reg address:0x%x, value:0x%x\n", __func__, par2, par3);
+	if (map == NULL) {
+		pr_notice("%s clock ic regmap is NULL.\n", __func__);
+		return 0;
+	}
+
+	regmap_write(map, par2, par3);
+	regmap_read(map, par2, &value);
+	pr_info("%s clock ic register write done, value after write:0x%x\n", __func__, value);
+#endif
+	return 0;
+}
+
+static INT32 wmt_dbg_set_bt_rssi(INT32 par1, INT32 par2, INT32 par3)
+{
+	wmt_set_bt_tssi_target(par2);
 	return 0;
 }
 
@@ -1525,7 +1575,7 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 	 * 0x32: alarm dump control
 	 */
 	if (0 == dbgEnabled && 0x15 != x && 0x2e != x && 0x2f != x &&
-		0x7 != x && x != 0x32) {
+		0x7 != x && x != 0x32 && 0xa1 != x) {
 		WMT_INFO_FUNC("please enable WMT debug first\n\r");
 		return len;
 	}
@@ -1543,11 +1593,18 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 
 INT32 wmt_dev_dbg_setup(VOID)
 {
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 	static const struct file_operations wmt_dbg_fops = {
 		.owner = THIS_MODULE,
 		.read = wmt_dbg_read,
 		.write = wmt_dbg_write,
 	};
+#else
+	static const struct proc_ops wmt_dbg_fops = {
+		.proc_read = wmt_dbg_read,
+		.proc_write = wmt_dbg_write,
+	};
+#endif
 	INT32 i_ret = 0;
 
 	gWmtDbgEntry = proc_create(WMT_DBG_PROCNAME, 0664, NULL, &wmt_dbg_fops);

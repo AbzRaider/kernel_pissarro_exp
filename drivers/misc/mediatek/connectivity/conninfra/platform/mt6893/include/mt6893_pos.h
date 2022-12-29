@@ -7,7 +7,7 @@
 #define _PLATFORM_MT6893_POS_H_
 
 
-unsigned int consys_emi_set_remapping_reg_mt6893(phys_addr_t, phys_addr_t);
+unsigned int consys_emi_set_remapping_reg_mt6893(phys_addr_t, phys_addr_t, phys_addr_t);
 
 int consys_conninfra_on_power_ctrl_mt6893(unsigned int enable);
 int consys_conninfra_wakeup_mt6893(void);
@@ -30,6 +30,7 @@ int consys_spi_write_mt6893(enum sys_spi_subsystem subsystem, unsigned int addr,
 int consys_spi_write_offset_range_mt6893(
 	enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int value,
 	unsigned int reg_offset, unsigned int value_offset, unsigned int size);
+int consys_spi_update_bits_mt6893(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask);
 
 int consys_adie_top_ck_en_on_mt6893(enum consys_adie_ctl_type type);
 int consys_adie_top_ck_en_off_mt6893(enum consys_adie_ctl_type type);

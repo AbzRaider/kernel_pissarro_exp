@@ -85,6 +85,7 @@ enum connsys_clock_schematic
 	CONNSYS_CLOCK_SCHEMATIC_26M_COTMS = 0,
 	CONNSYS_CLOCK_SCHEMATIC_52M_COTMS,
 	CONNSYS_CLOCK_SCHEMATIC_26M_EXTCXO,
+	CONNSYS_CLOCK_SCHEMATIC_52M_EXTCXO,
 
 	CONNSYS_CLOCK_SCHEMATIC_MAX,
 };
@@ -111,6 +112,15 @@ enum connsys_emi_type
 	CONNSYS_EMI_MCIF,
 
 	CONNSYS_EMI_MAX,
+};
+
+enum connsys_ic_info_type
+{
+	CONNSYS_SOC_CHIPID,
+	CONNSYS_HW_VER,
+	CONNSYS_ADIE_CHIPID,
+
+	CONNSYS_IC_INFO_MAX,
 };
 
 #define CONNINFRA_SPI_OP_FAIL	0x1
@@ -162,6 +172,9 @@ int conninfra_bus_clock_ctrl(enum consys_drv_type drv_type, unsigned int bus_clo
 /* Clock schematic query */
 int conninfra_get_clock_schematic(void);
 
+/* IC info query */
+unsigned int conninfra_get_ic_info(enum connsys_ic_info_type type);
+
 /* SPI clock switch */
 int conninfra_spi_clock_switch(enum connsys_spi_speed_type type);
 
@@ -172,9 +185,10 @@ int conninfra_adie_top_ck_en_off(enum consys_adie_ctl_type type);
 /* RFSPI */
 int conninfra_spi_read(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int *data);
 int conninfra_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data);
+int conninfra_spi_update_bits(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask);
 
 /* EMI */
-void conninfra_get_phy_addr(unsigned int *addr, unsigned int *size);
+void conninfra_get_phy_addr(phys_addr_t *addr, unsigned int *size);
 void conninfra_get_emi_phy_addr(enum connsys_emi_type type, phys_addr_t* base, unsigned int *size);
 
 /* power on/off */
@@ -196,6 +210,8 @@ int conninfra_reg_readable(void);
 /* IF YOU NEED THIS, PLEASE DISCUSS WITH OWNER   */
 /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*/
 int conninfra_reg_readable_no_lock(void);
+
+int conninfra_reg_readable_for_coredump(void);
 /*
  * 0 : NO hang
  * > 0 : HANG!!
@@ -239,6 +255,7 @@ struct whole_chip_rst_cb {
 struct pre_calibration_cb {
 	int (*pwr_on_cb)(void);
 	int (*do_cal_cb)(void);
+	int (*get_cal_result_cb)(unsigned int* offset, unsigned int* size);
 };
 
 struct sub_drv_ops_cb {

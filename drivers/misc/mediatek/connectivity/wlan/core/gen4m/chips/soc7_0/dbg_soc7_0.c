@@ -21,6 +21,7 @@
 #include "coda/soc7_0/wf_pse_top.h"
 #include "coda/soc7_0/wf_wfdma_host_dma0.h"
 #include "coda/soc7_0/wf_hif_dmashdl_top.h"
+#include "coda/soc7_0/wf_pp_top.h"
 
 /*******************************************************************************
  *                         C O M P I L E R   F L A G S
@@ -526,6 +527,11 @@ struct PSE_TOP_CR rSoc7_0_PseTopCr = {
 		WF_PSE_TOP_HIF0_PG_INFO_HIF0_SRC_CNT_MASK,
 		WF_PSE_TOP_HIF0_PG_INFO_HIF0_SRC_CNT_SHFT
 	},
+	.rIntN9Sts = {
+		WF_PSE_TOP_INT_N9_STS_ADDR,
+		0,
+		0
+	},
 	.rIntN9Err1Sts = {
 		WF_PSE_TOP_INT_N9_ERR1_STS_ADDR,
 		0,
@@ -718,6 +724,44 @@ struct PSE_TOP_CR rSoc7_0_PseTopCr = {
 	},
 };
 
+struct PP_TOP_CR rSoc7_0_PpTopCr = {
+	.rDbgCtrl = {
+		WF_PP_TOP_DBG_CTRL_ADDR,
+		0,
+		0
+	},
+	.rDbgCs0 = {
+		WF_PP_TOP_DBG_CS_0_ADDR,
+		0,
+		0
+	},
+	.rDbgCs1 = {
+		WF_PP_TOP_DBG_CS_1_ADDR,
+		0,
+		0
+	},
+	.rDbgCs2 = {
+		WF_PP_TOP_DBG_CS_2_ADDR,
+		0,
+		0
+	},
+	.rDbgCs3 = {
+		WF_PP_TOP_DBG_CS_3_ADDR,
+		0,
+		0
+	},
+	.rDbgCs4 = {
+		WF_PP_TOP_DBG_CS_4_ADDR,
+		0,
+		0
+	},
+	.rDbgCs5 = {
+		WF_PP_TOP_DBG_CS_5_ADDR,
+		0,
+		0
+	},
+};
+
 /*******************************************************************************
  *                           P R I V A T E   D A T A
  *******************************************************************************
@@ -727,8 +771,16 @@ void soc7_0_show_wfdma_dbg_probe_info(IN struct ADAPTER *prAdapter,
 {
 	uint32_t dbg_cr_idx[] = {0x0, 0x1, 0x2, 0x3, 0x30, 0x5, 0x7, 0xA, 0xB,
 		0xC};
-	uint32_t i = 0, u4DbgIdxAddr = 0, u4DbgProbeAddr = 0, u4DbgIdxValue = 0,
-		u4DbgProbeValue = 0;
+	uint32_t i = 0, u4DbgIdxAddr = 0, u4DbgProbeAddr = 0;
+	uint32_t u4DbgIdxValue = 0;
+	uint32_t u4DbgProbeValue = 0;
+	uint32_t u4BufferSize = 512, pos = 0;
+	char *buf;
+
+	buf = (char *)kalMemAlloc(u4BufferSize, VIR_MEM_TYPE);
+	if (buf == NULL)
+		return;
+	kalMemZero(buf, u4BufferSize);
 
 	if (!prAdapter)
 		return;
@@ -739,49 +791,239 @@ void soc7_0_show_wfdma_dbg_probe_info(IN struct ADAPTER *prAdapter,
 	u4DbgIdxAddr = WF_WFDMA_HOST_DMA0_WPDMA_DBG_IDX_ADDR;
 	u4DbgProbeAddr = WF_WFDMA_HOST_DMA0_WPDMA_DBG_PROBE_ADDR;
 
+	pos += kalSnprintf(buf + pos, u4BufferSize - pos,
+			"\t DBG_PROBE[0x%X] ", u4DbgProbeAddr);
+
 	for (i = 0; i < ARRAY_SIZE(dbg_cr_idx); i++) {
 		u4DbgIdxValue = 0x100 + dbg_cr_idx[i];
 		HAL_MCR_WR(prAdapter, u4DbgIdxAddr, u4DbgIdxValue);
 		HAL_MCR_RD(prAdapter, u4DbgProbeAddr, &u4DbgProbeValue);
-		DBGLOG(HAL, INFO, "\t Write(0x%2x) DBG_PROBE[0x%X]=0x%08X\n",
-			u4DbgIdxValue, u4DbgProbeAddr, u4DbgProbeValue);
+
+		pos += kalSnprintf(buf + pos, u4BufferSize - pos,
+				"Write(0x%2x)=0x%08X", u4DbgIdxValue,
+				u4DbgProbeValue);
+		if (i < ARRAY_SIZE(dbg_cr_idx)-1)
+			pos += kalSnprintf(buf + pos, u4BufferSize - pos, ", ");
+		else
+			pos += kalSnprintf(buf + pos, u4BufferSize - pos, "\n");
 	}
+
+	DBGLOG(HAL, INFO, "%s", buf);
+	kalMemFree(buf, VIR_MEM_TYPE, u4BufferSize);
 }
 
 void soc7_0_show_wfdma_wrapper_info(IN struct ADAPTER *prAdapter,
 	IN enum _ENUM_WFDMA_TYPE_T enum_wfdma_type)
 {
-	uint32_t u4DmaCfgCr = 0;
-	uint32_t u4RegValue = 0;
+	uint32_t u4DmaCfgCr[4] = {0};
+	uint32_t u4RegValue[4] = {0};
+#define DUMP_WRAPPER_STR "WFDMA_HIF_BUSY(0x%08x): 0x%08x, "  \
+				"WFDMA_AXI_SLPPROT_CTRL(0x%08x): 0x%08x, " \
+				"WFDMA_AXI_SLPPROT0_CTRL(0x%08x): 0x%08x, " \
+				"WFDMA_AXI_SLPPROT1_CTRL(0x%08x): 0x%08x\n"
 
 	if (!prAdapter)
 		return;
 
 	if (enum_wfdma_type == WFDMA_TYPE_HOST) {
-		u4DmaCfgCr = 0x7c027044;
-		HAL_MCR_RD(prAdapter, u4DmaCfgCr, &u4RegValue);
-		DBGLOG(INIT, INFO, "WFDMA_HIF_BUSY(0x%08x): 0x%08x\n",
-				u4DmaCfgCr,
-				u4RegValue);
-
-		u4DmaCfgCr = 0x7c027050;
-		HAL_MCR_RD(prAdapter, u4DmaCfgCr, &u4RegValue);
-		DBGLOG(INIT, INFO, "WFDMA_AXI_SLPPROT_CTRL(0x%08x): 0x%08x\n",
-				u4DmaCfgCr,
-				u4RegValue);
-
-		u4DmaCfgCr = 0x7c027078;
-		HAL_MCR_RD(prAdapter, u4DmaCfgCr, &u4RegValue);
-		DBGLOG(INIT, INFO, "WFDMA_AXI_SLPPROT0_CTRL(0x%08x): 0x%08x\n",
-				u4DmaCfgCr,
-				u4RegValue);
-
-		u4DmaCfgCr = 0x7c02707C;
-		HAL_MCR_RD(prAdapter, u4DmaCfgCr, &u4RegValue);
-		DBGLOG(INIT, INFO, "WFDMA_AXI_SLPPROT1_CTRL(0x%08x): 0x%08x\n",
-				u4DmaCfgCr,
-				u4RegValue);
+		u4DmaCfgCr[0] = 0x7c027044;
+		u4DmaCfgCr[1] = 0x7c027050;
+		u4DmaCfgCr[2] = 0x7c027078;
+		u4DmaCfgCr[3] = 0x7c02707C;
+		HAL_MCR_RD(prAdapter, u4DmaCfgCr[0], &u4RegValue[0]);
+		HAL_MCR_RD(prAdapter, u4DmaCfgCr[1], &u4RegValue[1]);
+		HAL_MCR_RD(prAdapter, u4DmaCfgCr[2], &u4RegValue[2]);
+		HAL_MCR_RD(prAdapter, u4DmaCfgCr[3], &u4RegValue[3]);
+		DBGLOG(INIT, INFO, DUMP_WRAPPER_STR,
+				u4DmaCfgCr[0], u4RegValue[0],
+				u4DmaCfgCr[1], u4RegValue[1],
+				u4DmaCfgCr[2], u4RegValue[2],
+				u4DmaCfgCr[3], u4RegValue[3]);
 	}
+}
+
+#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
+int soc7_0_get_rx_rate_info(IN struct ADAPTER *prAdapter,
+		OUT uint32_t *pu4Rate, OUT uint32_t *pu4Nss,
+		OUT uint32_t *pu4RxMode, OUT uint32_t *pu4FrMode,
+		OUT uint32_t *pu4Sgi)
+{
+	struct STA_RECORD *prStaRec;
+	uint32_t rxmode = 0, rate = 0, frmode = 0, sgi = 0, nsts = 0;
+	uint32_t stbc = 0, nss = 0;
+	uint32_t u4RxVector0 = 0;
+	uint8_t ucWlanIdx, ucStaIdx;
+
+	if ((!pu4Rate) || (!pu4Nss) || (!pu4RxMode) || (!pu4FrMode) ||
+		(!pu4Sgi))
+		return -1;
+
+	prStaRec = aisGetStaRecOfAP(prAdapter, AIS_DEFAULT_INDEX);
+	if (prStaRec) {
+		ucWlanIdx = prStaRec->ucWlanIndex;
+	} else {
+		DBGLOG(SW4, ERROR, "prStaRecOfAP is null\n");
+		return -1;
+	}
+
+	if (wlanGetStaIdxByWlanIdx(prAdapter, ucWlanIdx, &ucStaIdx) ==
+		WLAN_STATUS_SUCCESS) {
+		u4RxVector0 = prAdapter->arStaRec[ucStaIdx].u4RxVector0;
+		if (u4RxVector0 == 0) {
+			DBGLOG(SW4, WARN, "u4RxVector0 is 0\n");
+			return -1;
+		}
+	} else {
+		DBGLOG(SW4, ERROR, "wlanGetStaIdxByWlanIdx fail\n");
+		return -1;
+	}
+
+	/* P-RXV1 */
+	rate = (u4RxVector0 & SOC7_0_RX_VT_RX_RATE_MASK)
+				>> SOC7_0_RX_VT_RX_RATE_OFFSET;
+	nsts = ((u4RxVector0 & SOC7_0_RX_VT_NSTS_MASK)
+				>> SOC7_0_RX_VT_NSTS_OFFSET);
+	/* C-B-0 */
+	rxmode = (u4RxVector0 & SOC7_0_RX_VT_TXMODE_MASK)
+				>> SOC7_0_RX_VT_TXMODE_OFFSET;
+	frmode = (u4RxVector0 & SOC7_0_RX_VT_FR_MODE_MASK)
+				>> SOC7_0_RX_VT_FR_MODE_OFFSET;
+	sgi = (u4RxVector0 & SOC7_0_RX_VT_GI_MASK)
+				>> SOC7_0_RX_VT_GI_OFFSET;
+	stbc = (u4RxVector0 & SOC7_0_RX_VT_STBC_MASK)
+				>> SOC7_0_RX_VT_STBC_OFFSET;
+
+	nsts += 1;
+	if (nsts == 1)
+		nss = nsts;
+	else
+		nss = stbc ? (nsts >> 1) : nsts;
+
+	if (frmode >= 4) {
+		DBGLOG(SW4, ERROR, "frmode error: %u\n", frmode);
+		return -1;
+	}
+
+	*pu4Rate = rate;
+	*pu4Nss = nss;
+	*pu4RxMode = rxmode;
+	*pu4FrMode = frmode;
+	*pu4Sgi = sgi;
+
+	DBGLOG(SW4, TRACE,
+		   "rxvec0=[0x%x] rxmode=[%u], rate=[%u], bw=[%u], sgi=[%u], nss=[%u]\n",
+		   u4RxVector0, rxmode, rate, frmode, sgi, nss
+	);
+
+	return 0;
+}
+#endif
+
+void soc7_0_get_rx_link_stats(IN struct ADAPTER *prAdapter,
+	IN struct SW_RFB *prSwRfb, IN uint32_t u4RxVector0)
+{
+#if CFG_SUPPORT_LLS
+	static const uint8_t TX_MODE_2_LLS_MODE[] = {
+		LLS_MODE_CCK,
+		LLS_MODE_OFDM,
+		LLS_MODE_HT,
+		LLS_MODE_HT,
+		LLS_MODE_VHT,
+		LLS_MODE_RESERVED,
+		LLS_MODE_RESERVED,
+		LLS_MODE_RESERVED,
+		LLS_MODE_HE,
+		LLS_MODE_HE,
+		LLS_MODE_HE,
+		LLS_MODE_HE,
+		LLS_MODE_RESERVED,
+		LLS_MODE_RESERVED,
+		LLS_MODE_RESERVED,
+		LLS_MODE_RESERVED
+	};
+	static const uint8_t OFDM_RATE[STATS_LLS_OFDM_NUM] = {
+						6, 4, 2, 0, 7, 5, 3, 1};
+		/* report &= 7:  3  7  2   6   1   5   0    4 */
+		/* Mbps       : 6M 9M 12M 18M 24M 36M 48M 54M */
+		/* in 0.5 Mbps: 12 18 24  36  48  72  96  108 */
+		/* Save format:  0  1  2   3   4   5   6    7 */
+	struct STATS_LLS_WIFI_RATE rate = {0};
+	struct STA_RECORD *prStaRec;
+
+	if (prAdapter->rWifiVar.fgLinkStatsDump)
+		DBGLOG(RX, INFO, "RXV: pmbl=%u nsts=%u stbc=%u bw=%u mcs=%u",
+			RXV_GET_TXMODE(u4RxVector0),
+			RXV_GET_RX_NSTS(u4RxVector0),
+			RXV_GET_STBC(u4RxVector0),
+			RXV_GET_FR_MODE(u4RxVector0),
+			RXV_GET_RX_RATE(u4RxVector0));
+
+	if (!(prSwRfb->ucPayloadFormat == RX_PAYLOAD_FORMAT_MSDU ||
+		prSwRfb->ucPayloadFormat == RX_PAYLOAD_FORMAT_FIRST_SUB_AMSDU))
+		return;
+
+	rate.preamble = TX_MODE_2_LLS_MODE[RXV_GET_TXMODE(u4RxVector0)];
+
+	if (rate.preamble == LLS_MODE_RESERVED)
+		return;
+
+	rate.bw = RXV_GET_FR_MODE(u4RxVector0);
+	rate.nss = RXV_GET_RX_NSTS(u4RxVector0);
+	if (rate.preamble >= LLS_MODE_VHT) {
+		if (RXV_GET_STBC(u4RxVector0))
+			rate.nss /= 2;
+	}
+
+	rate.rateMcsIdx = RXV_GET_RX_RATE(u4RxVector0);
+
+	if (rate.preamble == LLS_MODE_CCK)
+		rate.rateMcsIdx &= 0x3; /* 0: 1M; 1: 2M; 2: 5.5M; 3: 11M  */
+	else if (rate.preamble == LLS_MODE_OFDM)
+		rate.rateMcsIdx = OFDM_RATE[rate.rateMcsIdx & 0x7];
+
+	if (rate.nss >= STATS_LLS_MAX_NSS_NUM)
+		goto wrong_rate;
+
+	prStaRec = cnmGetStaRecByIndex(prAdapter, prSwRfb->ucStaRecIdx);
+	if (!prStaRec) {
+		DBGLOG(RX, WARN, "StaRec %u not found", prSwRfb->ucStaRecIdx);
+		goto wrong_rate;
+	}
+
+	if (rate.preamble == LLS_MODE_OFDM) {
+		if (rate.rateMcsIdx >= STATS_LLS_OFDM_NUM)
+			goto wrong_rate;
+		prStaRec->u4RxMpduOFDM[0][0][rate.rateMcsIdx]++;
+	} else if (rate.preamble == LLS_MODE_CCK) {
+		if (rate.rateMcsIdx >= STATS_LLS_CCK_NUM)
+			goto wrong_rate;
+		prStaRec->u4RxMpduCCK[0][0][rate.rateMcsIdx]++;
+	} else if (rate.preamble == LLS_MODE_HT) {
+		if (rate.bw >= STATS_LLS_MAX_HT_BW_NUM ||
+				rate.rateMcsIdx >= STATS_LLS_HT_NUM)
+			goto wrong_rate;
+		prStaRec->u4RxMpduHT[0][rate.bw][rate.rateMcsIdx]++;
+	} else if (rate.preamble == LLS_MODE_VHT) {
+		if (rate.bw >= STATS_LLS_MAX_VHT_BW_NUM ||
+				rate.rateMcsIdx >= STATS_LLS_VHT_NUM)
+			goto wrong_rate;
+		prStaRec->u4RxMpduVHT[rate.nss][rate.bw][rate.rateMcsIdx]++;
+	} else if (rate.preamble == LLS_MODE_HE) {
+		if (rate.bw >= STATS_LLS_MAX_HE_BW_NUM ||
+				rate.rateMcsIdx >= STATS_LLS_HE_NUM)
+			goto wrong_rate;
+		prStaRec->u4RxMpduHE[rate.nss][rate.bw][rate.rateMcsIdx]++;
+	}
+
+	if (prAdapter->rWifiVar.fgLinkStatsDump)
+		DBGLOG(RX, INFO, "rate preamble=%u, nss=%u, bw=%u, mcsIdx=%u",
+			rate.preamble, rate.nss, rate.bw, rate.rateMcsIdx);
+	return;
+
+wrong_rate:
+	DBGLOG(RX, WARN, "Invalid rate preamble=%u, nss=%u, bw=%u, mcsIdx=%u",
+			rate.preamble, rate.nss, rate.bw, rate.rateMcsIdx);
+#endif
 }
 
 #endif /* SOC7_0 */

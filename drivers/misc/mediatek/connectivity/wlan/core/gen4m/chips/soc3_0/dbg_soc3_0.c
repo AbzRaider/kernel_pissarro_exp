@@ -643,6 +643,11 @@ struct PSE_TOP_CR rSoc3_0_PseTopCr = {
 		WF_PSE_TOP_HIF0_PG_INFO_HIF0_SRC_CNT_MASK,
 		WF_PSE_TOP_HIF0_PG_INFO_HIF0_SRC_CNT_SHFT
 	},
+	.rIntN9Sts = {
+		WF_PSE_TOP_INT_N9_STS_ADDR,
+		0,
+		0
+	},
 	.rIntN9Err1Sts = {
 		WF_PSE_TOP_INT_N9_ERR1_STS_ADDR,
 		0,
@@ -832,6 +837,44 @@ struct PSE_TOP_CR rSoc3_0_PseTopCr = {
 		0,
 		WF_PSE_TOP_QUEUE_EMPTY_SFD_PARK_QUEUE_EMPTY_MASK,
 		WF_PSE_TOP_QUEUE_EMPTY_SFD_PARK_QUEUE_EMPTY_SHFT
+	},
+};
+
+struct PP_TOP_CR rSoc3_0_PpTopCr = {
+	.rDbgCtrl = {
+		WF_PP_TOP_DBG_CTRL_ADDR,
+		0,
+		0
+	},
+	.rDbgCs0 = {
+		WF_PP_TOP_DBG_CS_0_ADDR,
+		0,
+		0
+	},
+	.rDbgCs1 = {
+		WF_PP_TOP_DBG_CS_1_ADDR,
+		0,
+		0
+	},
+	.rDbgCs2 = {
+		WF_PP_TOP_DBG_CS_2_ADDR,
+		0,
+		0
+	},
+	.rDbgCs3 = {
+		0,
+		0,
+		0
+	},
+	.rDbgCs4 = {
+		0,
+		0,
+		0
+	},
+	.rDbgCs5 = {
+		0,
+		0,
+		0
 	},
 };
 
@@ -1242,7 +1285,7 @@ void soc3_0_dump_mac_info(IN struct ADAPTER *prAdapter)
 	DBGLOG(HAL, INFO, "Dump for band0\n");
 	HAL_MCR_WR(prAdapter, 0x7C006100, 0x1F);
 	HAL_MCR_WR(prAdapter, 0x7C006104, 0x07070707);
-	HAL_MCR_WR(prAdapter, 0x7C006108, 0x0A0A0909);
+	HAL_MCR_WR(prAdapter, 0x7C006108, 0x0D0D0C0C);
 	HAL_MCR_RD(prAdapter, 0x820D0000, &value);
 	DBGLOG(HAL, INFO, "Dump CR: 0x820D0000 = 0x%08x\n", value);
 	HAL_MCR_RD(prAdapter, 0x820E3080, &value);
@@ -1280,7 +1323,7 @@ void soc3_0_dump_mac_info(IN struct ADAPTER *prAdapter)
 	DBGLOG(HAL, INFO, "Dump for band1\n");
 	HAL_MCR_WR(prAdapter, 0x7C006400, 0x1F);
 	HAL_MCR_WR(prAdapter, 0x7C006404, 0x07070707);
-	HAL_MCR_WR(prAdapter, 0x7C006408, 0x0A0A0909);
+	HAL_MCR_WR(prAdapter, 0x7C006408, 0x0D0D0C0C);
 	HAL_MCR_RD(prAdapter, 0x820D0000, &value);
 	DBGLOG(HAL, INFO, "Dump CR: 0x820D0000 = 0x%08x\n", value);
 	HAL_MCR_RD(prAdapter, 0x820F3080, &value);

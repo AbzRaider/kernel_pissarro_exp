@@ -397,13 +397,12 @@ static struct EMPTY_QUEUE_INFO Queue_Empty_info[] = {
 	{"RLS2 Q",  ENUM_PLE_CTRL_PSE_PORT_3, ENUM_UMAC_PLE_CTRL_P3_Q_0X1F}
 };
 
-
-/* ============================================================================
- *                         Debug Interrupt Interface
- * +--------------------------------------------------------------------------+
- * |Toggle|  Reserved[30:16]  | BandNum[15:14] | Module[13:08] | Reason[7:0]  |
- * +--------------------------------------------------------------------------+
- * ============================================================================
+/* =============================================================================
+ *                         Debug Interrupt Interface v1
+ * +---------------------------------------------------------------------------+
+ * |Toggle|Rsv[30:28]|Ver[27:24]|Rsv[23:18]|BSSInx[17:14]|Mod[13:8]|Reason[7:0]|
+ * +---------------------------------------------------------------------------+
+ * =============================================================================
  */
 uint32_t halGetPleInt(struct ADAPTER *prAdapter)
 {
@@ -992,7 +991,8 @@ void haldumpMacInfo(struct ADAPTER *prAdapter)
 {
 #define BUF_SIZE 1024
 #define LOOP_COUNT 30
-	uint32_t i = 0, pos = 0;
+	uint32_t i = 0, j = 0, pos = 0;
+	uint32_t u4RegValue1 = 0, u4RegValue2 = 0, u4RegValue3 = 0;
 	uint32_t cr_band0[] = {
 		0x820F0000, /* [25] clock enable */
 		0x820F3080, /* [ 9: 8] RX/TX disable */
@@ -1049,6 +1049,37 @@ void haldumpMacInfo(struct ADAPTER *prAdapter)
 		0x82060154, /* N9 SRC count */
 		0x820F0024, /* Abort condition */
 	};
+	uint32_t cr_arb_debug_flag_loop[] = {
+		0xa5a5a4a4, /* BT RW(ARB RW) */
+		0xd5d5d4d4, /* ARBtoAGG RW */
+		0x92929595, /* [13]:RW==0? [4]:sleep_flag */
+		0x99999999, /* PTA-ARB interface  */
+		0x40404141, /* arb back-off state & ARB-UMAC interface */
+		0xe0e0e5e5, /* ARB-UMAC interface */
+		0x04040505, /* queue status */
+	};
+	uint32_t cr_arb_queue_sel_loop[] = {
+		0x00000000,
+		0x01010101,
+		0x02020202,
+		0x03030303,
+		0x04040404,
+		0x05050505,
+		0x06060606,
+		0x07070707,
+		0x08080808,
+		0x09090909,
+		0x0A0A0A0A,
+		0x0B0B0B0B,
+		0x0C0C0C0C,
+		0x0D0D0D0D,
+		0x0E0E0E0E,
+		0x0F0F0F0F,
+		0x10101010,
+		0x11111111,
+		0x12121212,
+		0x13131313,
+	};
 
 	char *buf = (char *) kalMemAlloc(BUF_SIZE, VIR_MEM_TYPE);
 
@@ -1104,6 +1135,54 @@ void haldumpMacInfo(struct ADAPTER *prAdapter)
 		}
 	}
 
+	DBGLOG(HAL, INFO, "Dump for ARB\n");
+	HAL_MCR_RD(prAdapter, 0x820F3200, &u4RegValue1);
+	HAL_MCR_RD(prAdapter, 0x820F3278, &u4RegValue2);
+	HAL_MCR_RD(prAdapter, 0x820F327C, &u4RegValue3);
+	DBGLOG(HAL, INFO,
+		"ARB_DBG: B[0]Read 0x820F3200=0x%x Read 0x820F3278=0x%x Read 0x820F327C=0x%x\n",
+		u4RegValue1, u4RegValue2, u4RegValue3);
+
+	HAL_MCR_WR(prAdapter, 0x820F082C, 0xF);
+	HAL_MCR_WR(prAdapter, 0x80025100, 0x1F);
+	HAL_MCR_WR(prAdapter, 0x80025104, 0x04040404);
+	for (i = 0; i < LOOP_COUNT; i++) {
+		/* [15:11]:tx_que_num */
+		HAL_MCR_WR(prAdapter, 0x80025108, 0x4d4dacac);
+		HAL_MCR_RD(prAdapter, 0x820F0024, &u4RegValue1);
+		DBGLOG(HAL, INFO,
+			"ARB_DBG: B[0]Set 0x80025108 = 0x4d4dacac read 0x820F0024=0x%x\n",
+			u4RegValue1);
+		/* queue freeze flag */
+		HAL_MCR_WR(prAdapter, 0x80025108, 0x6c6c6d6d);
+		HAL_MCR_RD(prAdapter, 0x820F0024, &u4RegValue1);
+		DBGLOG(HAL, INFO,
+			"ARB_DBG: B[0]Set 0x80025108 = 0x6c6c6d6d read 0x820F0024=0x%x\n",
+			u4RegValue1);
+	}
+
+	for (i = 0; i < LOOP_COUNT; i++) {
+		/* ARB debug flags */
+		for (j = 0; j < ARRAY_SIZE(cr_arb_debug_flag_loop); j++) {
+			HAL_MCR_WR(prAdapter, 0x80025108,
+				cr_arb_debug_flag_loop[j]);
+			HAL_MCR_RD(prAdapter, 0x820F0024, &u4RegValue1);
+			DBGLOG(HAL, INFO,
+				"ARB_DBG: B[0]Set 0x80025108 = 0x%x read 0x820F0024=0x%x\n",
+				cr_arb_debug_flag_loop[j], u4RegValue1);
+		}
+		/* ARB queue status */
+		HAL_MCR_WR(prAdapter, 0x80025108, 0x04040505);
+		for (j = 0; j < ARRAY_SIZE(cr_arb_queue_sel_loop); j++) {
+			HAL_MCR_WR(prAdapter, 0x820f3060,
+				cr_arb_queue_sel_loop[j]);
+			HAL_MCR_RD(prAdapter, 0x820F0024, &u4RegValue1);
+			DBGLOG(HAL, INFO,
+				"ARB_DBG: B[0]Set 0x80025108 = 0x04040505 Set 0x820f3060 = 0x%x read 0x820F0024=0x%x\n",
+				cr_arb_queue_sel_loop[j], u4RegValue1);
+		}
+	}
+
 	if (buf)
 		kalMemFree(buf, VIR_MEM_TYPE, BUF_SIZE);
 #undef LOOP_COUNT
@@ -1128,7 +1207,7 @@ static char *q_idx_lmac_str[] = {"WMM0_AC0", "WMM0_AC1", "WMM0_AC2", "WMM0_AC3",
 	"Band1_ALTX", "Band1_BMC", "Band1_BNC", "Band1_PSMP",
 	"Invalid"};
 
-void halDumpTxdInfo(IN struct ADAPTER *prAdapter, uint32_t *tmac_info)
+void halDumpTxdInfo(IN struct ADAPTER *prAdapter, uint8_t *tmac_info)
 {
 	struct TMAC_TXD_S *txd_s;
 	struct TMAC_TXD_0 *txd_0;
@@ -1815,7 +1894,7 @@ int32_t halShowStatInfo(struct ADAPTER *prAdapter,
 				pcCommand + i4BytesWritten,
 				i4TotalLen - i4BytesWritten,
 				"%-20s%s%s\n", "NonSpState", " = ",
-				prQueryStaStatistics->ucDynamicSGIState <
+				prQueryStaStatistics->ucVhtNonSpRateState <
 				(ucRaSgiUnSpStateNum - 1) ?
 				SGI_UNSP_STATE_TBLE[prQueryStaStatistics->
 				ucVhtNonSpRateState] :
@@ -1886,7 +1965,7 @@ int32_t halShowStatInfo(struct ADAPTER *prAdapter,
 			pcCommand + i4BytesWritten,
 			i4TotalLen - i4BytesWritten,
 			"%s%s%s", "------ ",
-			(eRangeType) ? (
+			(eRangeType != 0) ? (
 				(eRangeType == ENUM_AGG_RANGE_TYPE_TRX) ?
 				("TRX") : ("RX")) : ("TX"),
 				" AGG (Group 0x40) -----\n");
@@ -2065,3 +2144,76 @@ int32_t halShowStatInfo(struct ADAPTER *prAdapter,
 
 	return i4BytesWritten;
 }
+
+#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
+int connac_get_rx_rate_info(IN struct ADAPTER *prAdapter,
+		OUT uint32_t *pu4Rate, OUT uint32_t *pu4Nss,
+		OUT uint32_t *pu4RxMode, OUT uint32_t *pu4FrMode,
+		OUT uint32_t *pu4Sgi)
+{
+	struct STA_RECORD *prStaRec;
+	uint32_t rxmode = 0, rate = 0, frmode = 0, sgi = 0, nsts = 0;
+	uint32_t groupid = 0, stbc = 0, nss = 0;
+	uint32_t u4RxVector0 = 0, u4RxVector1 = 0;
+	uint8_t ucWlanIdx, ucStaIdx;
+
+	if ((!pu4Rate) || (!pu4Nss) || (!pu4RxMode) || (!pu4FrMode) ||
+		(!pu4Sgi))
+		return -1;
+
+	prStaRec = aisGetStaRecOfAP(prAdapter, AIS_DEFAULT_INDEX);
+	if (prStaRec) {
+		ucWlanIdx = prStaRec->ucWlanIndex;
+	} else {
+		DBGLOG(SW4, ERROR, "prStaRecOfAP is null\n");
+		return -1;
+	}
+
+	if (wlanGetStaIdxByWlanIdx(prAdapter, ucWlanIdx, &ucStaIdx) ==
+		WLAN_STATUS_SUCCESS) {
+		u4RxVector0 = prAdapter->arStaRec[ucStaIdx].u4RxVector0;
+		u4RxVector1 = prAdapter->arStaRec[ucStaIdx].u4RxVector1;
+		if ((u4RxVector0 == 0) || (u4RxVector1 == 0)) {
+			DBGLOG(SW4, WARN, "RxVector1 or RxVector2 is 0\n");
+			return -1;
+		}
+	} else {
+		DBGLOG(SW4, ERROR, "wlanGetStaIdxByWlanIdx fail\n");
+		return -1;
+	}
+
+	rate = (u4RxVector0 & RX_VT_RX_RATE_MASK) >> RX_VT_RX_RATE_OFFSET;
+	nsts = ((u4RxVector1 & RX_VT_NSTS_MASK) >> RX_VT_NSTS_OFFSET);
+	stbc = ((u4RxVector0 & RX_VT_STBC_MASK) >> RX_VT_STBC_OFFSET);
+	rxmode = (u4RxVector0 & RX_VT_RX_MODE_MASK) >> RX_VT_RX_MODE_OFFSET;
+	frmode = (u4RxVector0 & RX_VT_FR_MODE_MASK) >> RX_VT_FR_MODE_OFFSET;
+	sgi = u4RxVector0 & RX_VT_SHORT_GI;
+	groupid = (u4RxVector1 & RX_VT_GROUP_ID_MASK) >> RX_VT_GROUP_ID_OFFSET;
+
+	if ((groupid == 0) || (groupid == 63))
+		nsts += 1;
+
+	nss = stbc ? (nsts >> 1) : nsts;
+
+	sgi = (sgi == 0) ? 0 : 1;
+
+	if (frmode >= 4) {
+		DBGLOG(SW4, ERROR, "frmode error: %u\n", frmode);
+		return -1;
+	}
+
+	*pu4Rate = rate;
+	*pu4Nss = nss;
+	*pu4RxMode = rxmode;
+	*pu4FrMode = frmode;
+	*pu4Sgi = sgi;
+
+	DBGLOG(SW4, TRACE,
+		   "rxmode=[%u], rate=[%u], bw=[%u], sgi=[%u], nss=[%u]\n",
+		   rxmode, rate, frmode, sgi, nss
+	);
+
+	return 0;
+}
+#endif
+

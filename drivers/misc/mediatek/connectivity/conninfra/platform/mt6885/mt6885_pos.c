@@ -120,7 +120,8 @@ const char* get_spi_sys_name(enum sys_spi_subsystem subsystem)
 
 unsigned int consys_emi_set_remapping_reg_mt6885(
 	phys_addr_t con_emi_base_addr,
-	phys_addr_t md_shared_emi_base_addr)
+	phys_addr_t md_shared_emi_base_addr,
+	phys_addr_t gps_emi_base_addr)
 {
 	/* EMI Registers remapping */
 	CONSYS_REG_WRITE_OFFSET_RANGE(CON_REG_HOST_CSR_ADDR + CONN2AP_REMAP_MCU_EMI_BASE_ADDR_OFFSET,
@@ -172,7 +173,7 @@ int consys_conninfra_on_power_ctrl_mt6885(unsigned int enable)
 		CONSYS_SET_BIT(CON_REG_INFRACFG_BASE_ADDR + INFRA_AP2MD_GALS_CTL, 0x1);
 
 #if MTK_CONNINFRA_CLOCK_BUFFER_API_AVAILABLE
-		check = consys_platform_spm_conn_ctrl(enable);
+		check = consys_platform_spm_conn_ctrl_mt6885(enable);
 		if (check) {
 			pr_err("Turn on conn_infra power fail\n");
 			return -1;
@@ -345,7 +346,7 @@ int consys_conninfra_on_power_ctrl_mt6885(unsigned int enable)
 		/* Enable AXI bus sleep protect */
 #if MTK_CONNINFRA_CLOCK_BUFFER_API_AVAILABLE
 		pr_info("Turn off conn_infra power by SPM API\n");
-		check = consys_platform_spm_conn_ctrl(enable);
+		check = consys_platform_spm_conn_ctrl_mt6885(enable);
 		if (check) {
 			pr_err("Turn off conn_infra power fail, ret=%d\n", check);
 			return -1;
@@ -653,7 +654,7 @@ void consys_set_if_pinmux_mt6885(unsigned int enable)
 		 * Data: 3'b100
 		 * Action: write
 		 */
-		if (consys_co_clock_type() == CONNSYS_CLOCK_SCHEMATIC_26M_EXTCXO) {
+		if (consys_co_clock_type_mt6885() == CONNSYS_CLOCK_SCHEMATIC_26M_EXTCXO) {
 			/* TODO: need customization for TCXO GPIO */
 			CONSYS_REG_WRITE_MASK(GPIO_BASE_ADDR + GPIO_MODE19, 0x4000, 0x7000);
 		}
@@ -691,7 +692,7 @@ void consys_set_if_pinmux_mt6885(unsigned int enable)
 		 * Data: 3'b000
 		 * Action: write
 		 */
-		if (consys_co_clock_type() == CONNSYS_CLOCK_SCHEMATIC_26M_EXTCXO) {
+		if (consys_co_clock_type_mt6885() == CONNSYS_CLOCK_SCHEMATIC_26M_EXTCXO) {
 			CONSYS_REG_WRITE_MASK(GPIO_BASE_ADDR + GPIO_MODE19, 0x0, 0x7000);
 		}
 	}
@@ -1098,8 +1099,8 @@ static int connsys_a_die_efuse_read(unsigned int efuse_addr)
 
 static int connsys_a_die_thermal_cal(int efuse_valid, unsigned int efuse)
 {
-	struct consys_plat_thermal_data input;
-	memset(&input, 0, sizeof(struct consys_plat_thermal_data));
+	struct consys_plat_thermal_data_mt6885 input;
+	memset(&input, 0, sizeof(struct consys_plat_thermal_data_mt6885));
 
 	if (efuse_valid) {
 		if (efuse & (0x1 << 7)) {
@@ -1124,7 +1125,7 @@ static int connsys_a_die_thermal_cal(int efuse_valid, unsigned int efuse)
 			pr_info("offset=[%d]", input.offset);
 		}
 	}
-	update_thermal_data(&input);
+	update_thermal_data_mt6885(&input);
 	return 0;
 }
 //#endif
@@ -1135,7 +1136,7 @@ int connsys_a_die_cfg_mt6885(void)
 	bool adie_26m = true;
 	unsigned int adie_id = 0;
 
-	if (consys_co_clock_type() == CONNSYS_CLOCK_SCHEMATIC_52M_COTMS) {
+	if (consys_co_clock_type_mt6885() == CONNSYS_CLOCK_SCHEMATIC_52M_COTMS) {
 		pr_info("A-die clock 52M\n");
 		adie_26m = false;
 	}
@@ -1527,7 +1528,7 @@ static int connsys_bt_low_power_setting(bool bt_only)
 	return 0;
 }
 
-void connsys_debug_select_config(void)
+static void connsys_debug_select_config(void)
 {
 #if 1
 	/* select conn_infra_cfg debug_sel to low pwoer related
@@ -1540,14 +1541,14 @@ void connsys_debug_select_config(void)
 #else
 	/* select conn_infra_cfg debug_sel to BPLL/WPLL status
 	 * Address: 0x18001B00[2:0]
-	 * Data: 3?™b001
+	 * Data: 3â€™b001
 	 * Action: write
 	 */
 	CONSYS_REG_WRITE_MASK(CON_REG_INFRA_CFG_ADDR + CONN_INFRA_CFG_DBG_MUX_SEL,
 			0x1, 0x7);
 	{
 		void __iomem *vir_addr = NULL;
-		vir_addr = ioremap_nocache(0x18006000, 0x1000);
+		vir_addr = ioremap(0x18006000, 0x1000);
 		if (vir_addr) {
 			/* wpll_rdy/bpll_rdy status dump
 			 * 1.???Set 0x1800_604C = 0xFFFF_FFFF
@@ -2170,6 +2171,38 @@ static void consys_spi_write_offset_range_nolock(
 		addr, data, data2);
 }
 
+int consys_spi_update_bits_mt6885(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask)
+{
+	int ret = 0;
+	unsigned int curr_val = 0;
+	unsigned int new_val = 0;
+	bool change = false;
+
+	/* Get semaphore before updating bits */
+	if (consys_sema_acquire_timeout_mt6885(CONN_SEMA_RFSPI_INDEX, CONN_SEMA_TIMEOUT) == CONN_SEMA_GET_FAIL) {
+		pr_err("[SPI WRITE] Require semaphore fail\n");
+		return CONNINFRA_SPI_OP_FAIL;
+	}
+
+	ret = consys_spi_read_nolock(subsystem, addr, &curr_val);
+
+	if (ret) {
+		pr_err("[%s][%s] Get 0x%08x error, ret=%d",
+			__func__, get_spi_sys_name(subsystem), addr, ret);
+		return CONNINFRA_SPI_OP_FAIL;
+	}
+
+	new_val = (curr_val & (~mask)) | (data & mask);
+	change = (curr_val != new_val);
+
+	if (change) {
+		ret = consys_spi_write_nolock(subsystem, addr, new_val);
+	}
+
+	consys_sema_release_mt6885(CONN_SEMA_RFSPI_INDEX);
+
+	return ret;
+}
 
 static int consys_adie_top_ck_en_ctrl(bool on)
 {

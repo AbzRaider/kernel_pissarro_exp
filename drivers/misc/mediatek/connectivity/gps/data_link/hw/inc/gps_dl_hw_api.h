@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #ifndef _GPS_DL_HW_API_H
 #define _GPS_DL_HW_API_H
 
@@ -38,6 +31,7 @@ int gps_dl_hw_gps_dsp_ctrl(enum dsp_ctrl_enum ctrl);
 bool gps_dl_hw_gps_dsp_is_off_done(enum gps_dl_link_id_enum link_id);
 void gps_dl_hw_gps_adie_force_off(void);
 void gps_dl_hw_gps_dump_top_rf_cr(void);
+void gps_dl_hw_gps_dump_top_rf_temp_cr(void);
 
 int gps_dl_hw_gps_common_on(void);
 int gps_dl_hw_gps_common_off(void);
@@ -58,7 +52,10 @@ enum GDL_RET_STATUS gps_dl_hw_mcub_dsp_read_request(
 
 void gps_dl_hw_set_gps_emi_remapping(unsigned int _20msb_of_36bit_phy_addr);
 unsigned int gps_dl_hw_get_gps_emi_remapping(void);
-
+#if GPS_DL_USE_PERI_REMAP
+void gps_dl_hw_set_gps_peri_remapping(unsigned int _20msb_of_36bit_phy_addr);
+unsigned int gps_dl_hw_get_gps_peri_remapping(void);
+#endif
 void gps_dl_hw_set_dma_start(enum gps_dl_hal_dma_ch_index channel,
 	struct gdl_hw_dma_transfer *p_transfer);
 
@@ -100,6 +97,12 @@ struct gps_dl_hw_usrt_status_struct {
 	unsigned int mcub_a2d_flag;
 	unsigned int mcub_a2d_d0;
 	unsigned int mcub_a2d_d1;
+	unsigned int monf;
+};
+
+struct gps_dl_hw_pair_time_struct {
+	unsigned int dsp_ms;
+	unsigned long kernel_ms;
 };
 
 /* TODO: replace gps_dl_hw_usrt_status_struct */
@@ -127,7 +130,10 @@ void gps_dl_hw_do_gps_a2z_dump(void);
 void gps_dl_hw_print_usrt_status(enum gps_dl_link_id_enum link_id);
 bool gps_dl_hw_poll_usrt_dsp_rx_empty(enum gps_dl_link_id_enum link_id);
 void gps_dl_hw_gps_dump_gps_rf_cr(void);
+void gps_dl_hw_gps_dump_gps_rf_temp_cr(void);
 void gps_dl_hw_print_ms_counter_status(void);
+struct gps_dl_hw_pair_time_struct *gps_dl_hw_get_dsp_ms_counter(
+	unsigned int *p_tcxo_low, unsigned int *p_tcxo_high);
 
 void gps_dl_hw_switch_dsp_jtag(void);
 

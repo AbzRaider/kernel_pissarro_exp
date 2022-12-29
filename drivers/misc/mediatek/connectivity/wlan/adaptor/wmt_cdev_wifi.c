@@ -1,6 +1,5 @@
 /*
 * Copyright (C) 2016 MediaTek Inc.
-* Copyright (C) 2021 XiaoMi, Inc.
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the
 * GNU General Public License version 2 as published by the Free Software Foundation.
@@ -29,9 +28,11 @@
 #include <linux/netdevice.h>
 #include <linux/inetdevice.h>
 #include <linux/string.h>
-#include <mt-plat/aee.h>
 
 #include "fw_log_wifi.h"
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+#include "fw_log_ics.h"
+#endif
 #if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
 #include "wifi_pwr_on.h"
 #else
@@ -98,6 +99,8 @@ enum {
 	WLAN_MODE_AP,
 	WLAN_MODE_STA_P2P,
 	WLAN_MODE_STA_AP_P2P,
+	WLAN_MODE_DUAL_P2P,
+	WLAN_MODE_DUAL_AP,
 	WLAN_MODE_MAX
 };
 static int32_t wlan_mode = WLAN_MODE_HALT;
@@ -111,7 +114,6 @@ static int32_t wifi_standalone_log_mode;
 static uint8_t  driver_resetting;
 static uint8_t  write_processing;
 static uint8_t  pre_cal_ongoing;
-static uint8_t  cal_only_once;
 #endif
 /*******************************************************************
  */
@@ -222,19 +224,24 @@ uint8_t get_pre_cal_status(void)
 	return pre_cal_ongoing;
 }
 EXPORT_SYMBOL(get_pre_cal_status);
-void update_only_once_status(uint8_t fgIsOnce)
-{
-	WIFI_INFO_FUNC("update_only_once_status: %d\n", fgIsOnce);
-	cal_only_once = fgIsOnce;
-}
-EXPORT_SYMBOL(update_only_once_status);
-uint8_t get_only_once_status(void)
-{
-	WIFI_INFO_FUNC("only once status: %d\n", cal_only_once);
-	return cal_only_once;
-}
-EXPORT_SYMBOL(get_only_once_status);
 #endif
+
+int32_t update_wr_mtx_down_up_status(uint8_t ucDownUp, uint8_t ucIsBlocking)
+{
+	if (ucDownUp == 0) {
+		WIFI_INFO_FUNC("Try to down wr_mtx\n");
+		if (ucIsBlocking == 1)
+			down(&wr_mtx);
+		else if (ucIsBlocking == 0)
+			return down_trylock(&wr_mtx);
+	} else if (ucDownUp == 1) {
+		up(&wr_mtx);
+		WIFI_INFO_FUNC("Up wr_mtx\n");
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(update_wr_mtx_down_up_status);
 
 enum ENUM_WLAN_DRV_BUF_TYPE_T {
 	BUF_TYPE_NVRAM,
@@ -373,15 +380,6 @@ int32_t wifi_reset_end(enum ENUM_RESET_STATUS status)
 					WIFI_ERR_FUNC("Set wlan mode 1 fail\n");
 				} else {
 					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_AP);
-					ret = 0;
-				}
-			} else if (wlan_mode == WLAN_MODE_STA_AP_P2P) {
-				p2pmode.u4Enable = 1;
-				p2pmode.u4Mode = 3;
-				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-					WIFI_ERR_FUNC("Set wlan mode 3 fail\n");
-				} else {
-					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_STA_AP_P2P);
 					ret = 0;
 				}
 			} else
@@ -528,7 +526,6 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 
 				if (!handler) {
 					WIFI_ERR_FUNC("Wi-Fi driver is not ready for write NVRAM\n");
-					aee_kernel_warning("wlan", "Wi-Fi driver is not ready for write NVRAM\n");
 				} else
 					WIFI_INFO_FUNC("Wi-Fi handler = %p\n", handler);
 			} else if (!strncmp(&local[7], "DRVCFG", 6)) {
@@ -699,6 +696,62 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 			isconcurrent = 0;
 			WIFI_INFO_FUNC("Disable concurrent mode\n");
 			retval = count;
+		} else if (local[0] == 'D') {
+			if (wlan_mode == WLAN_MODE_DUAL_P2P) {
+				WIFI_INFO_FUNC("WIFI is already in dual p2p mode %d!\n", wlan_mode);
+			} else {
+				netdev = dev_get_by_name(&init_net, ifname);
+				if (netdev && pf_set_p2p_mode) {
+					p2pmode.u4Enable = 0;
+					p2pmode.u4Mode = 0;
+					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
+						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
+					else
+						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
+				} else
+					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
+
+				if (netdev && pf_set_p2p_mode) {
+					p2pmode.u4Enable = 1;
+					p2pmode.u4Mode = 4;
+					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
+						WIFI_ERR_FUNC("Set wlan mode fail\n");
+					} else {
+						WIFI_INFO_FUNC("Set wlan mode %d --> %d\n",
+							wlan_mode, WLAN_MODE_DUAL_P2P);
+						wlan_mode = WLAN_MODE_DUAL_P2P;
+					}
+				}
+			}
+			retval = count;
+		} else if (local[0] == 'E') {
+			if (wlan_mode == WLAN_MODE_DUAL_AP) {
+				WIFI_INFO_FUNC("WIFI is already in dual ap mode %d!\n", wlan_mode);
+			} else {
+				netdev = dev_get_by_name(&init_net, ifname);
+				if (netdev && pf_set_p2p_mode) {
+					p2pmode.u4Enable = 0;
+					p2pmode.u4Mode = 0;
+					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
+						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
+					else
+						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
+				} else
+					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
+
+				if (netdev && pf_set_p2p_mode) {
+					p2pmode.u4Enable = 1;
+					p2pmode.u4Mode = 2;
+					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
+						WIFI_ERR_FUNC("Set wlan mode fail\n");
+					} else {
+						WIFI_INFO_FUNC("Set wlan mode %d --> %d\n",
+							wlan_mode, WLAN_MODE_DUAL_AP);
+						wlan_mode = WLAN_MODE_DUAL_AP;
+					}
+				}
+			}
+			retval = count;
 		} else if (!strncmp(local, "LLM", 3)) {
 			WIFI_INFO_FUNC("local = %s", local);
 			if (!strncmp(local + 4, "0x", 2)) {
@@ -748,6 +801,10 @@ static int WIFI_init(void)
 
 	sema_init(&wr_mtx, 1);
 
+#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
+	wifi_pwr_on_init();
+#endif
+
 	/* Allocate char device */
 	if (WIFI_major) {
 		wifi_devno = MKDEV(WIFI_major, 0);
@@ -787,9 +844,10 @@ static int WIFI_init(void)
 		WIFI_INFO_FUNC("connsys debug node init failed!!\n");
 		goto error;
 	}
-#endif
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-	wifi_pwr_on_init();
+	if (fw_log_ics_init() < 0) {
+		WIFI_INFO_FUNC("ics log node init failed!!\n");
+		goto error;
+	}
 #endif
 	return 0;
 
@@ -833,6 +891,7 @@ static void WIFI_exit(void)
 
 #ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
 	fw_log_wifi_deinit();
+	fw_log_ics_deinit();
 #endif
 #if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
 	wifi_pwr_on_deinit();

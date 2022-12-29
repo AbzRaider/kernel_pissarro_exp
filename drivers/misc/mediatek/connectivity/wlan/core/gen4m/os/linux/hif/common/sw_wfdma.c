@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2020 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 /*
  * Id: @(#) sw_wfdma.c@@
@@ -85,7 +84,7 @@ void halSwWfdmaInit(struct GLUE_INFO *prGlueInfo)
 	if (!prSwWfdmaInfo->fgIsEnSwWfdma)
 		return;
 
-	prSwWfdmaInfo->u4PortIdx = TX_RING_CMD_IDX_2;
+	prSwWfdmaInfo->u4PortIdx = TX_RING_CMD_IDX_3;
 
 	/* update sw wfdma emi offset */
 	if (prSwWfdmaInfo->u4EmiOffsetAddr) {
@@ -118,12 +117,12 @@ void halSwWfdmaInit(struct GLUE_INFO *prGlueInfo)
 		gConEmiPhyBaseFinal + prSwWfdmaInfo->u4EmiOffset,
 		SW_WFDMA_EMI_SIZE,
 		"WIFI-SW-WFDMA");
-	pucEmiBaseAddr = ioremap_nocache(
+	pucEmiBaseAddr = ioremap(
 		gConEmiPhyBaseFinal + prSwWfdmaInfo->u4EmiOffset,
 		SW_WFDMA_EMI_SIZE);
 
 	DBGLOG_LIMITED(INIT, INFO,
-		       "EmiPhyBase:0x%llx offset:0x%x, ioremap region 0x%lX @ 0x%lX\n",
+		       "EmiPhyBase:0x%llx offset:0x%x, ioremap region 0x%lX @ 0x%p\n",
 		       (uint64_t)gConEmiPhyBaseFinal,
 		       prSwWfdmaInfo->u4EmiOffset,
 		       gConEmiSizeFinal, pucEmiBaseAddr);
@@ -156,7 +155,7 @@ void halSwWfdmaUninit(struct GLUE_INFO *prGlueInfo)
 		return;
 	}
 
-	DBGLOG_LIMITED(INIT, INFO, "iounmap 0x%lX\n",
+	DBGLOG_LIMITED(INIT, INFO, "iounmap 0x%p\n",
 		       prSwWfdmaInfo->pucIoremapAddr);
 	iounmap(prSwWfdmaInfo->pucIoremapAddr);
 	release_mem_region(
@@ -215,7 +214,10 @@ void halSwWfdmaBackup(struct GLUE_INFO *prGlueInfo)
 	if (!prSwWfdmaInfo->fgIsEnSwWfdma || !prSwWfDmad)
 		return;
 
-	memcpy_fromio(&prSwWfdmaInfo->rBackup, prSwWfDmad,
+	prSwWfdmaInfo->u4CpuIdxBackup = prSwWfdmaInfo->u4CpuIdx;
+	prSwWfdmaInfo->u4DmaIdxBackup = prSwWfdmaInfo->u4DmaIdx;
+
+	kalMemCopyFromIo(&prSwWfdmaInfo->rBackup, prSwWfDmad,
 		      sizeof(struct SW_WFDMAD));
 }
 
@@ -236,8 +238,11 @@ void halSwWfdmaRestore(struct GLUE_INFO *prGlueInfo)
 	if (!prSwWfdmaInfo->fgIsEnSwWfdma || !prSwWfDmad)
 		return;
 
+	prSwWfdmaInfo->u4CpuIdx = prSwWfdmaInfo->u4CpuIdxBackup;
+	prSwWfdmaInfo->u4DmaIdx = prSwWfdmaInfo->u4DmaIdxBackup;
+
 	while (prBackup->u4FwIdx != prBackup->u4DrvIdx) {
-		memcpy_toio(prSwWfDmad->aucBuf[prSwWfDmad->u4DrvIdx],
+		kalMemCopyToIo(prSwWfDmad->aucBuf[prSwWfDmad->u4DrvIdx],
 			    prBackup->aucBuf[prBackup->u4FwIdx],
 			    SW_WFDMA_CMD_PKT_SIZE);
 		ucCID = prSwWfdmaInfo->aucCID[prSwWfDmad->u4DrvIdx];
@@ -344,7 +349,7 @@ bool halSwWfdmaWriteCmd(struct GLUE_INFO *prGlueInfo)
 	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
 	prSwWfDmad = prSwWfdmaInfo->prDmad;
 
-	prTxRing = &prHifInfo->TxRing[TX_RING_CMD_IDX_2];
+	prTxRing = &prHifInfo->TxRing[TX_RING_CMD_IDX_3];
 
 	if (!prSwWfdmaInfo->fgIsEnSwWfdma || !prSwWfDmad)
 		return false;
@@ -375,7 +380,7 @@ bool halSwWfdmaWriteCmd(struct GLUE_INFO *prGlueInfo)
 			continue;
 		}
 
-		memcpy_toio(prBuf, (void *)pTxCell->DmaBuf.AllocVa, u4Size);
+		kalMemCopyToIo(prBuf, (void *)pTxCell->DmaBuf.AllocVa, u4Size);
 		pTxD->DMADONE = 1;
 
 		prSwWfdmaInfo->u4DmaIdx =
@@ -383,21 +388,12 @@ bool halSwWfdmaWriteCmd(struct GLUE_INFO *prGlueInfo)
 		prSwWfDmad->u4DrvIdx =
 			(prSwWfDmad->u4DrvIdx + 1) % SW_WFDMA_CMD_NUM;
 
-		if (aucDebugModule[DBG_TX_IDX] & DBG_CLASS_TRACE)
-			DBGLOG(
-				HAL, TRACE,
-				"Write CMD DRV[%u] FW[%u] CID[0x%02X] SEQ[%d]\n",
-				prSwWfDmad->u4DrvIdx,
-				prSwWfDmad->u4FwIdx,
-				prCmdInfo ? prCmdInfo->ucCID : 0,
-				prCmdInfo->ucCmdSeqNum);
-		else
-			DBGLOG_LIMITED(
-				HAL, INFO,
-				"Write CMD DRV[%u] FW[%u] CID[0x%02X]\n",
-				prSwWfDmad->u4DrvIdx,
-				prSwWfDmad->u4FwIdx,
-				prCmdInfo ? prCmdInfo->ucCID : 0);
+		DBGLOG_LIMITED(
+			HAL, INFO,
+			"Write CMD DRV[%u] FW[%u] CID[0x%02X]\n",
+			prSwWfDmad->u4DrvIdx,
+			prSwWfDmad->u4FwIdx,
+			prCmdInfo ? prCmdInfo->ucCID : 0);
 
 		DBGLOG_MEM32(HAL, TRACE, prBuf, u4Size);
 
@@ -423,7 +419,7 @@ bool halSwWfdmaProcessDmaDone(struct GLUE_INFO *prGlueInfo)
 	if (!prSwWfdmaInfo->fgIsEnSwWfdma)
 		return false;
 
-	halWpdmaProcessCmdDmaDone(prGlueInfo, TX_RING_CMD_IDX_2);
+	halWpdmaProcessCmdDmaDone(prGlueInfo, TX_RING_CMD_IDX_3);
 	return halSwWfdmaWriteCmd(prGlueInfo);
 }
 

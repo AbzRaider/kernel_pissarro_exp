@@ -17,6 +17,9 @@ bool gps_dl_hw_dep_poll_bgf_bus_and_gps_top_ack(void);
 void gps_dl_hw_dep_may_set_bus_debug_flag(void);
 bool gps_dl_hw_dep_may_enable_bpll(void);
 void gps_dl_hw_dep_may_disable_bpll(void);
+void gps_dl_hw_dep_may_remap_conn2ap_gps_peri(void);
+bool gps_dl_hw_dep_may_check_conn_infra_restore_done(void);
+void gps_dl_hw_dep_may_set_conn_infra_l1_request(bool request);
 
 /*
  * GPS
@@ -34,6 +37,7 @@ void gps_dl_hw_dep_dump_host_csr_conninfra_info(void);
 
 /* Only need when BMASK_RW_DO_CHECK active for debug purpose */
 void gps_dl_hw_dep_may_do_bus_check_and_print(unsigned int host_addr);
+void gps_dl_hw_dep_dump_gps_rf_temp_cr(void);
 
 /*
  * MET2.0

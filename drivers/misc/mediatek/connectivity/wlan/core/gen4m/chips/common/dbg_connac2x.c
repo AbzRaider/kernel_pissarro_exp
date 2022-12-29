@@ -205,7 +205,7 @@ static u_int8_t *sta_ctrl_reg[] = {"ENABLE", "DISABLE", "PAUSE"};
  *******************************************************************************
  */
 
-static void connac2x_dump_tmac_info(
+void connac2x_dump_tmac_info(
 	struct ADAPTER *prAdapter,
 	uint8_t *tmac_info)
 {
@@ -601,11 +601,11 @@ static void connac2x_event_dump_txd_mem(
 
 void connac2x_show_txd_Info(
 	struct ADAPTER *prAdapter,
-	u_int32_t fid)
+	uint32_t fid)
 {
 	struct EXT_CMD_EVENT_DUMP_MEM_T CmdMemDump;
-	u_int32_t Addr = 0;
-	u_int32_t rWlanStatus = WLAN_STATUS_SUCCESS;
+	uint32_t Addr = 0;
+	uint32_t rWlanStatus = WLAN_STATUS_SUCCESS;
 
 	DBGLOG(HAL, INFO, "inShowTXDINFO fid=%d 0x%x\n", fid, fid);
 
@@ -1507,8 +1507,7 @@ static void connac2x_print_wtbl_info(
 					rate_idx + 1,
 					txrate[rate_idx],
 					txmode,
-					(txmode < ENUM_TX_MODE_NUM ?
-					RATE_V2_HW_TX_MODE_STR[txmode] : "N/A"),
+					RATE_V2_HW_TX_MODE_STR[txmode],
 					mcs,
 					mcs < 4 ? HW_TX_RATE_CCK_STR[mcs] :
 					   HW_TX_RATE_CCK_STR[4],
@@ -1519,8 +1518,7 @@ static void connac2x_print_wtbl_info(
 					rate_idx + 1,
 					txrate[rate_idx],
 					txmode,
-					(txmode < ENUM_TX_MODE_NUM ?
-					RATE_V2_HW_TX_MODE_STR[txmode] : "N/A"),
+					RATE_V2_HW_TX_MODE_STR[txmode],
 					mcs,
 					nicHwRateOfdmStr(mcs),
 					nss, stbc);
@@ -1672,8 +1670,8 @@ int32_t connac2x_show_umac_wtbl_info(
 			&u4Value, sizeof(uint32_t));
 	}
 	puwtbl = (struct fwtbl_umac_struct *)wtbl_raw_dw;
-	pn = ((pn || (puwtbl->serial_no.wtbl_d1.field.pn1) << 5)
-		|| puwtbl->serial_no.wtbl_d0.field.pn0);
+	pn = (((unsigned long long)(puwtbl->serial_no.wtbl_d1.field.pn1) << 32)
+		| puwtbl->serial_no.wtbl_d0.field.pn0);
 	/* UMAC WTBL DW 0,1 */
 	LOGBUF(pcCommand, i4TotalLen, i4BytesWritten,
 		"UWTBL DW 0,1\n\tpn:%d\n\tcom_sn:%d\n",
@@ -2812,21 +2810,38 @@ static void connac2x_show_wfdma_axi_debug_log(
 {
 	uint32_t pdma_base_cr;
 	uint32_t i = 0;
+	uint32_t u4RegValue = 0;
+	uint32_t target_cr = 0;
+	uint32_t u4BufferSize = 512, pos = 0;
+	char *buf;
+#define DUMP_CR_NUM			13
+#define WFDMA_AXI_OFFSET	0x500
+
+	buf = (char *)kalMemAlloc(u4BufferSize, VIR_MEM_TYPE);
+	if (buf == NULL)
+		return;
+	kalMemZero(buf, u4BufferSize);
 
 	if (enum_wfdma_type == WFDMA_TYPE_HOST)
 		pdma_base_cr = CONNAC2X_HOST_EXT_CONN_HIF_WRAP;
 	else
 		pdma_base_cr = CONNAC2X_MCU_INT_CONN_HIF_WRAP;
 
-	for (i = 0; i < 13; i++) {
-		uint32_t target_cr = pdma_base_cr + 0x500 + (i * 4);
-		uint32_t u4RegValue = 0;
+	for (i = 0; i < DUMP_CR_NUM; i++) {
+		target_cr = pdma_base_cr + WFDMA_AXI_OFFSET + (i * 4);
 
 		HAL_MCR_RD(prAdapter, target_cr, &u4RegValue);
-		DBGLOG(INIT, INFO, "get(0x%08x):0x%08x\n",
-			target_cr,
-			u4RegValue);
+
+		pos += kalSnprintf(buf + pos, u4BufferSize - pos,
+				"get(0x%08x):0x%08x", target_cr, u4RegValue);
+		if (i < DUMP_CR_NUM - 1)
+			pos += kalSnprintf(buf + pos, u4BufferSize - pos, ", ");
+		else
+			pos += kalSnprintf(buf + pos, u4BufferSize - pos, "\n");
 	}
+
+	DBGLOG(HAL, INFO, "%s", buf);
+	kalMemFree(buf, VIR_MEM_TYPE, u4BufferSize);
 }
 
 void connac2x_show_wfdma_interrupt_info(
@@ -2955,6 +2970,7 @@ void connac2x_show_wfdma_ring_info(
 	uint32_t u4DmaCfgCrAddr;
 	struct wfdma_group_info *group;
 	uint32_t u4_hw_desc_base_value = 0;
+	uint64_t u8_hw_desc_base_value = 0;
 	uint32_t u4_hw_cnt_value = 0;
 	uint32_t u4_hw_cidx_value = 0;
 	uint32_t u4_hw_didx_value = 0;
@@ -2992,6 +3008,10 @@ void connac2x_show_wfdma_ring_info(
 		HAL_MCR_RD(prAdapter, u4DmaCfgCrAddr+0x08, &u4_hw_cidx_value);
 		HAL_MCR_RD(prAdapter, u4DmaCfgCrAddr+0x0c, &u4_hw_didx_value);
 
+		u8_hw_desc_base_value = (u4_hw_cnt_value & 0xF0000);
+		u8_hw_desc_base_value = (u8_hw_desc_base_value << 16)
+			| u4_hw_desc_base_value;
+		u4_hw_cnt_value = u4_hw_cnt_value & 0x0FFF;
 		group->cnt = u4_hw_cnt_value;
 		group->cidx = u4_hw_cidx_value;
 		group->didx = u4_hw_didx_value;
@@ -3000,10 +3020,10 @@ void connac2x_show_wfdma_ring_info(
 			(u4_hw_cidx_value - u4_hw_didx_value) :
 			(u4_hw_cidx_value - u4_hw_didx_value + u4_hw_cnt_value);
 
-		DBGLOG(HAL, INFO, "%4d %20s %8x %10x %6x %6x %6x %6x\n",
+		DBGLOG(HAL, INFO, "%4d %20s %8x %10lx %6x %6x %6x %6x\n",
 			idx,
 			group->name,
-			u4DmaCfgCrAddr, u4_hw_desc_base_value,
+			u4DmaCfgCrAddr, u8_hw_desc_base_value,
 			u4_hw_cnt_value, u4_hw_cidx_value,
 			u4_hw_didx_value, queue_cnt);
 
@@ -3032,6 +3052,10 @@ void connac2x_show_wfdma_ring_info(
 		HAL_MCR_RD(prAdapter, u4DmaCfgCrAddr+0x08, &u4_hw_cidx_value);
 		HAL_MCR_RD(prAdapter, u4DmaCfgCrAddr+0x0c, &u4_hw_didx_value);
 
+		u8_hw_desc_base_value = (u4_hw_cnt_value & 0xF0000);
+		u8_hw_desc_base_value = (u8_hw_desc_base_value << 16)
+			| u4_hw_desc_base_value;
+		u4_hw_cnt_value = u4_hw_cnt_value & 0xFFFF;
 		group->cnt = u4_hw_cnt_value;
 		group->cidx = u4_hw_cidx_value;
 		group->didx = u4_hw_didx_value;
@@ -3041,10 +3065,10 @@ void connac2x_show_wfdma_ring_info(
 			(u4_hw_didx_value - u4_hw_cidx_value
 			+ u4_hw_cnt_value - 1);
 
-		DBGLOG(HAL, INFO, "%4d %20s %8x %10x %6x %6x %6x %6x\n",
+		DBGLOG(HAL, INFO, "%4d %20s 0x%9x %10lx %6x %6x %6x %6x\n",
 			idx,
 			group->name,
-			u4DmaCfgCrAddr, u4_hw_desc_base_value,
+			u4DmaCfgCrAddr, u8_hw_desc_base_value,
 			u4_hw_cnt_value, u4_hw_cidx_value,
 			u4_hw_didx_value, queue_cnt);
 	}
@@ -3070,7 +3094,7 @@ void connac2x_show_wfdma_desc(IN struct ADAPTER *prAdapter)
 		prGroup = &prBusInfo->wfmda_host_tx_group[i];
 		if (!prGroup->dump_ring_content)
 			continue;
-		DBGLOG(HAL, INFO, "Dump PDMA Tx Ring[%u]\n", i);
+		DBGLOG(HAL, INFO, "Dump WFDMA Tx Ring[%s]\n", prGroup->name);
 		prTxRing = &prHifInfo->TxRing[i];
 		u4SwIdx = prGroup->didx;
 		kalDumpTxRing(prAdapter->prGlueInfo, prTxRing,
@@ -3078,52 +3102,66 @@ void connac2x_show_wfdma_desc(IN struct ADAPTER *prAdapter)
 		u4SwIdx = prGroup->didx == 0 ?
 			prGroup->cnt - 1 : prGroup->didx - 1;
 		kalDumpTxRing(prAdapter->prGlueInfo, prTxRing, u4SwIdx, true);
+		u4SwIdx = prGroup->didx == prGroup->cnt - 1 ?
+			0 : prGroup->didx + 1;
+		kalDumpTxRing(prAdapter->prGlueInfo, prTxRing, u4SwIdx, true);
 	}
 
 	for (i = 0; i < prBusInfo->wfmda_host_rx_group_len; i++) {
 		prGroup = &prBusInfo->wfmda_host_rx_group[i];
 		if (!prGroup->dump_ring_content)
 			continue;
-		DBGLOG(HAL, INFO, "Dump PDMA Rx Ring[%u]\n", i);
+		DBGLOG(HAL, INFO, "Dump WFDMA Rx Ring[%s]\n", prGroup->name);
 		prRxRing = &prHifInfo->RxRing[i];
 		u4SwIdx = prGroup->didx;
 		kalDumpRxRing(prAdapter->prGlueInfo, prRxRing, u4SwIdx, true);
 		u4SwIdx = prGroup->didx == 0 ?
 			prGroup->cnt - 1 : prGroup->didx - 1;
 		kalDumpRxRing(prAdapter->prGlueInfo, prRxRing, u4SwIdx, true);
+		u4SwIdx = prGroup->didx == prGroup->cnt - 1 ?
+			0 : prGroup->didx + 1;
+		kalDumpRxRing(prAdapter->prGlueInfo, prRxRing, u4SwIdx, true);
 	}
 }
 
 static void connac2xDumpPPDebugCr(struct ADAPTER *prAdapter)
 {
-	uint32_t ReadRegValue[4];
-	uint32_t u4Value[4] = {0};
+	struct BUS_INFO *prBusInfo;
+	struct PP_TOP_CR *prCr;
+	uint32_t u4Value[7] = {0};
 
 	if (!prAdapter)
 		return;
 
-	/* 0x820CC0F0 : PP DBG_CTRL */
-	ReadRegValue[0] = 0x820CC0F0;
-	HAL_MCR_RD(prAdapter, ReadRegValue[0], &u4Value[0]);
+	DBGLOG(HAL, INFO, "PP info:\n");
 
-	/* 0x820CC0F8 : PP DBG_CS0 */
-	ReadRegValue[1] = 0x820CC0F8;
-	HAL_MCR_RD(prAdapter, ReadRegValue[1], &u4Value[1]);
+	prBusInfo = prAdapter->chip_info->bus_info;
+	prCr = prBusInfo->prPpTopCr;
 
-	/* 0x820CC0FC : PP DBG_CS1 */
-	ReadRegValue[2] = 0x820CC0FC;
-	HAL_MCR_RD(prAdapter, ReadRegValue[2], &u4Value[2]);
-
-	/* 0x820CC100 : PP DBG_CS2 */
-	ReadRegValue[3] = 0x820CC100;
-	HAL_MCR_RD(prAdapter, ReadRegValue[3], &u4Value[3]);
+	HAL_MCR_RD(prAdapter, prCr->rDbgCtrl.u4Addr, &u4Value[0]);
+	HAL_MCR_RD(prAdapter, prCr->rDbgCs0.u4Addr, &u4Value[1]);
+	HAL_MCR_RD(prAdapter, prCr->rDbgCs1.u4Addr, &u4Value[2]);
+	HAL_MCR_RD(prAdapter, prCr->rDbgCs2.u4Addr, &u4Value[3]);
+	if (prCr->rDbgCs3.u4Addr != 0)
+		HAL_MCR_RD(prAdapter, prCr->rDbgCs3.u4Addr, &u4Value[4]);
+	if (prCr->rDbgCs4.u4Addr != 0)
+		HAL_MCR_RD(prAdapter, prCr->rDbgCs4.u4Addr, &u4Value[5]);
+	if (prCr->rDbgCs5.u4Addr != 0)
+		HAL_MCR_RD(prAdapter, prCr->rDbgCs5.u4Addr, &u4Value[6]);
 
 	DBGLOG(HAL, INFO,
 	"PP[0x%08x]=0x%08x,[0x%08x]=0x%08x,[0x%08x]=0x%08x,[0x%08x]=0x%08x,",
-		ReadRegValue[0], u4Value[0],
-		ReadRegValue[1], u4Value[1],
-		ReadRegValue[2], u4Value[2],
-		ReadRegValue[3], u4Value[3]);
+		prCr->rDbgCtrl.u4Addr, u4Value[0],
+		prCr->rDbgCs0.u4Addr, u4Value[1],
+		prCr->rDbgCs1.u4Addr, u4Value[2],
+		prCr->rDbgCs2.u4Addr, u4Value[3]);
+
+	if (prCr->rDbgCs3.u4Addr != 0)
+		DBGLOG(HAL, INFO,
+		"PP[0x%08x]=0x%08x,[0x%08x]=0x%08x,[0x%08x]=0x%08x,",
+			prCr->rDbgCs3.u4Addr, u4Value[4],
+			prCr->rDbgCs4.u4Addr, u4Value[5],
+			prCr->rDbgCs5.u4Addr, u4Value[6]);
 }
 
 static void connac2x_dump_wfdma_dbg_value(
@@ -3159,19 +3197,69 @@ static void connac2x_dump_wfdma_dbg_value(
 	set_debug_cr = pdma_base_cr + 0x124;
 	get_debug_cr = pdma_base_cr + 0x128;
 	kalMemZero(buf, BUF_SIZE);
-	pos += kalSnprintf(buf + pos, 50,
+	pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
 			"set_debug_cr:0x%08x get_debug_cr:0x%08x; ",
 			set_debug_cr, get_debug_cr);
 	for (set_debug_flag_value = 0x100; set_debug_flag_value <= 0x112;
 			set_debug_flag_value++) {
 		HAL_MCR_WR(prAdapter, set_debug_cr, set_debug_flag_value);
 		HAL_MCR_RD(prAdapter, get_debug_cr, &get_debug_value);
-		pos += kalSnprintf(buf + pos, 40, "Set:0x%03x, result=0x%08x%s",
+		pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"Set:0x%03x, result=0x%08x%s",
 			set_debug_flag_value,
 			get_debug_value,
 			set_debug_flag_value == 0x112 ? "\n" : "; ");
 	}
 	DBGLOG(HAL, INFO, "%s", buf);
+
+	pos = 0;
+	pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"set_debug_cr:0x%08x get_debug_cr:0x%08x; ",
+			set_debug_cr, get_debug_cr);
+	for (set_debug_flag_value = 0x113; set_debug_flag_value <= 0x125;
+			set_debug_flag_value++) {
+		HAL_MCR_WR(prAdapter, set_debug_cr, set_debug_flag_value);
+		HAL_MCR_RD(prAdapter, get_debug_cr, &get_debug_value);
+		pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"Set:0x%03x, result=0x%08x%s",
+			set_debug_flag_value,
+			get_debug_value,
+			set_debug_flag_value == 0x125 ? "\n" : "; ");
+	}
+	DBGLOG(HAL, INFO, "%s", buf);
+
+	pos = 0;
+	pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"set_debug_cr:0x%08x get_debug_cr:0x%08x; ",
+			set_debug_cr, get_debug_cr);
+	for (set_debug_flag_value = 0x125; set_debug_flag_value <= 0x131;
+			set_debug_flag_value++) {
+		HAL_MCR_WR(prAdapter, set_debug_cr, set_debug_flag_value);
+		HAL_MCR_RD(prAdapter, get_debug_cr, &get_debug_value);
+		pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"Set:0x%03x, result=0x%08x%s",
+			set_debug_flag_value,
+			get_debug_value,
+			set_debug_flag_value == 0x131 ? "\n" : "; ");
+	}
+	DBGLOG(HAL, INFO, "%s", buf);
+
+	pos = 0;
+	pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"set_debug_cr:0x%08x get_debug_cr:0x%08x; ",
+			set_debug_cr, get_debug_cr);
+	for (set_debug_flag_value = 0x152; set_debug_flag_value <= 0x154;
+			set_debug_flag_value++) {
+		HAL_MCR_WR(prAdapter, set_debug_cr, set_debug_flag_value);
+		HAL_MCR_RD(prAdapter, get_debug_cr, &get_debug_value);
+		pos += kalSnprintf(buf + pos, BUF_SIZE - pos,
+			"Set:0x%03x, result=0x%08x%s",
+			set_debug_flag_value,
+			get_debug_value,
+			set_debug_flag_value == 0x154 ? "\n" : "; ");
+	}
+	DBGLOG(HAL, INFO, "%s", buf);
+
 	kalMemFree(buf, VIR_MEM_TYPE, BUF_SIZE);
 }
 
@@ -3277,7 +3365,11 @@ void connac2x_show_dmashdl_info(IN struct ADAPTER *prAdapter)
 	DBGLOG(HAL, INFO, "DMASHDL ERR FLAG CTRL(0x%08x): 0x%08x\n",
 	       prCfg->rErrorFlagCtrl.u4Addr, value);
 
-	for (idx = 0; idx < ENUM_DMASHDL_GROUP_2; idx++) {
+	/* Dump Group 0~14 info */
+	for (idx = 0; idx <= ENUM_DMASHDL_GROUP_14; idx++) {
+		if (prCfg->afgRefillEn[idx] == 0)
+			continue;
+
 		DBGLOG(HAL, INFO, "Group %d info:\n", idx);
 		asicConnac2xDmashdlGetGroupControl(prAdapter, idx);
 		rsv_cnt = asicConnac2xDmashdlGetRsvCount(prAdapter, idx);
@@ -3286,6 +3378,15 @@ void connac2x_show_dmashdl_info(IN struct ADAPTER *prAdapter)
 		total_src_cnt += src_cnt;
 		total_rsv_cnt += rsv_cnt;
 	}
+
+	/* Dump Group 15 info */
+	idx = ENUM_DMASHDL_GROUP_15;
+	DBGLOG(HAL, INFO, "Group %d info:\n", idx);
+	asicConnac2xDmashdlGetGroupControl(prAdapter, idx);
+	asicConnac2xDmashdlGetRsvCount(prAdapter, idx);
+	asicConnac2xDmashdlGetSrcCount(prAdapter, idx);
+	asicConnac2xDmashdlGetPKTCount(prAdapter, idx);
+
 	HAL_MCR_RD(prAdapter, prCfg->rStatusRdFfaCnt.u4Addr, &value);
 	ffa_cnt = (value & prCfg->rStatusRdFfaCnt.u4Mask) >>
 		prCfg->rStatusRdFfaCnt.u4Shift;
@@ -3342,12 +3443,12 @@ void connac2x_show_dmashdl_info(IN struct ADAPTER *prAdapter)
 }
 
 
-/* ============================================================================
- *                         Debug Interrupt Interface
- * +--------------------------------------------------------------------------+
- * |Toggle|  Reserved[30:16]  | BandNum[15:14] | Module[13:08] | Reason[7:0]  |
- * +--------------------------------------------------------------------------+
- * ============================================================================
+/* =============================================================================
+ *                         Debug Interrupt Interface v1
+ * +---------------------------------------------------------------------------+
+ * |Toggle|Rsv[30:28]|Ver[27:24]|Rsv[23:18]|BSSInx[17:14]|Mod[13:8]|Reason[7:0]|
+ * +---------------------------------------------------------------------------+
+ * =============================================================================
  */
 uint32_t connac2x_get_ple_int(struct ADAPTER *prAdapter)
 {
@@ -3390,17 +3491,17 @@ void connac2x_show_ple_info(struct ADAPTER *prAdapter, u_int8_t fgDumpTxd)
 {
 	struct BUS_INFO *prBusInfo;
 	struct PLE_TOP_CR *prCr;
-	u_int32_t int_n9_err = 0;
-	u_int32_t int_n9_err1 = 0;
-	u_int32_t ple_buf_ctrl = 0, pg_sz, pg_num;
-	u_int32_t ple_stat[25] = {0}, pg_flow_ctrl[10] = {0};
-	u_int32_t sta_pause[6] = {0}, dis_sta_map[6] = {0};
-	u_int32_t fpg_cnt, ffa_cnt, fpg_head, fpg_tail, hif_max_q, hif_min_q;
-	u_int32_t rpg_hif, upg_hif, cpu_max_q, cpu_min_q, rpg_cpu, upg_cpu;
-	u_int32_t i, j;
-	u_int32_t ple_peek[12] = {0};
-	u_int32_t ple_empty = 0;
-	u_int32_t ple_txd_empty = 0;
+	uint32_t int_n9_err = 0;
+	uint32_t int_n9_err1 = 0;
+	uint32_t ple_buf_ctrl = 0, pg_sz, pg_num;
+	uint32_t ple_stat[25] = {0}, pg_flow_ctrl[10] = {0};
+	uint32_t sta_pause[6] = {0}, dis_sta_map[6] = {0};
+	uint32_t fpg_cnt, ffa_cnt, fpg_head, fpg_tail, hif_max_q, hif_min_q;
+	uint32_t rpg_hif, upg_hif, cpu_max_q, cpu_min_q, rpg_cpu, upg_cpu;
+	uint32_t i, j;
+	uint32_t ple_peek[12] = {0};
+	uint32_t ple_empty = 0;
+	uint32_t ple_txd_empty = 0;
 	uint32_t buf_size = 1024, pos = 0;
 	char *buf;
 
@@ -3683,24 +3784,25 @@ void connac2x_show_pse_info(struct ADAPTER *prAdapter)
 {
 	struct BUS_INFO *prBusInfo;
 	struct PSE_TOP_CR *prCr;
-	u_int32_t int_n9_err = 0;
-	u_int32_t int_n9_err1 = 0;
-	u_int32_t pse_buf_ctrl = 0;
-	u_int32_t pg_sz = 0;
-	u_int32_t pg_num = 0;
-	u_int32_t pse_stat = 0;
-	u_int32_t pse_stat_mask = 0;
-	u_int32_t fpg_cnt, ffa_cnt, fpg_head, fpg_tail;
-	u_int32_t max_q, min_q, rsv_pg, used_pg;
-	u_int32_t i;
-	u_int32_t group_quota = 0;
-	u_int32_t group_info = 0;
-	u_int32_t freepg_cnt = 0;
-	u_int32_t freepg_head_tail = 0;
+	uint32_t int_n9_sta = 0;
+	uint32_t int_n9_err = 0;
+	uint32_t int_n9_err1 = 0;
+	uint32_t pse_buf_ctrl = 0;
+	uint32_t pg_sz = 0;
+	uint32_t pg_num = 0;
+	uint32_t pse_stat = 0;
+	uint32_t pse_stat_mask = 0;
+	uint32_t fpg_cnt, ffa_cnt, fpg_head, fpg_tail;
+	uint32_t max_q, min_q, rsv_pg, used_pg;
+	uint32_t i;
+	uint32_t group_quota = 0;
+	uint32_t group_info = 0;
+	uint32_t freepg_cnt = 0;
+	uint32_t freepg_head_tail = 0;
 	struct pse_group_info *pse_group;
 	struct pse_group_info *group;
 	char *str;
-	u_int32_t pse_peek[10] = {0};
+	uint32_t pse_peek[10] = {0};
 
 	prBusInfo = prAdapter->chip_info->bus_info;
 	pse_group = prBusInfo->prPseGroup;
@@ -3713,6 +3815,7 @@ void connac2x_show_pse_info(struct ADAPTER *prAdapter)
 	HAL_MCR_RD(prAdapter, prCr->rFreepgHeadTail.u4Addr,
 		   &freepg_head_tail);
 
+	HAL_MCR_RD(prAdapter, prCr->rIntN9Sts.u4Addr, &int_n9_sta);
 	HAL_MCR_RD(prAdapter, prCr->rIntN9ErrSts.u4Addr, &int_n9_err);
 	HAL_MCR_RD(prAdapter, prCr->rIntN9Err1Sts.u4Addr, &int_n9_err1);
 
@@ -3727,27 +3830,28 @@ void connac2x_show_pse_info(struct ADAPTER *prAdapter)
 	HAL_MCR_RD(prAdapter, prCr->rFsmPeekCr08.u4Addr, &pse_peek[8]);
 	HAL_MCR_RD(prAdapter, prCr->rFsmPeekCr09.u4Addr, &pse_peek[9]);
 
-	/* Error Status Info */
+	/* Status Info */
 	DBGLOG(HAL, INFO,
-	"PSE Error Status(0x%08x):0x%08x,PSE Error 1 Status(0x%08x):0x%08x\n",
-			prCr->rIntN9ErrSts.u4Addr, int_n9_err,
-			prCr->rIntN9Err1Sts.u4Addr, int_n9_err1);
+	"PSE Int Status(0x%08x):0x%08x, PSE Error Status(0x%08x):0x%08x, PSE Error 1 Status(0x%08x):0x%08x\n",
+		prCr->rIntN9Sts.u4Addr, int_n9_sta,
+		prCr->rIntN9ErrSts.u4Addr, int_n9_err,
+		prCr->rIntN9Err1Sts.u4Addr, int_n9_err1);
 
 	DBGLOG(HAL, INFO,
-	"00(0x%08x):0x%08x,01(0x%08x):0x%08x02(0x%08x):0x%08x,03(0x%08x):0x%08x04(0x%08x):0x%08x,05(0x%08x):0x%08x\n",
-				prCr->rFsmPeekCr00.u4Addr, pse_peek[0],
-				prCr->rFsmPeekCr01.u4Addr, pse_peek[1],
-				prCr->rFsmPeekCr02.u4Addr, pse_peek[2],
-				prCr->rFsmPeekCr03.u4Addr, pse_peek[3],
-				prCr->rFsmPeekCr04.u4Addr, pse_peek[4],
-				prCr->rFsmPeekCr05.u4Addr, pse_peek[5]);
+	"00(0x%08x):0x%08x, 01(0x%08x):0x%08x, 02(0x%08x):0x%08x, 03(0x%08x):0x%08x, 04(0x%08x):0x%08x\n",
+		prCr->rFsmPeekCr00.u4Addr, pse_peek[0],
+		prCr->rFsmPeekCr01.u4Addr, pse_peek[1],
+		prCr->rFsmPeekCr02.u4Addr, pse_peek[2],
+		prCr->rFsmPeekCr03.u4Addr, pse_peek[3],
+		prCr->rFsmPeekCr04.u4Addr, pse_peek[4]);
 
 	DBGLOG(HAL, INFO,
-	"06(0x%08x):0x%08x,07(0x%08x):0x%08x08(0x%08x):0x%08x,09(0x%08x):0x%08x\n",
-				prCr->rFsmPeekCr06.u4Addr, pse_peek[6],
-				prCr->rFsmPeekCr07.u4Addr, pse_peek[7],
-				prCr->rFsmPeekCr08.u4Addr, pse_peek[8],
-				prCr->rFsmPeekCr09.u4Addr, pse_peek[9]);
+	"05(0x%08x):0x%08x, 06(0x%08x):0x%08x, 07(0x%08x):0x%08x, 08(0x%08x):0x%08x, 09(0x%08x):0x%08x\n",
+		prCr->rFsmPeekCr05.u4Addr, pse_peek[5],
+		prCr->rFsmPeekCr06.u4Addr, pse_peek[6],
+		prCr->rFsmPeekCr07.u4Addr, pse_peek[7],
+		prCr->rFsmPeekCr08.u4Addr, pse_peek[8],
+		prCr->rFsmPeekCr09.u4Addr, pse_peek[9]);
 
 	/* Configuration Info */
 	pg_sz = (pse_buf_ctrl & prCr->rPbufCtrlPageSizeCfg.u4Mask) >>
@@ -4037,5 +4141,90 @@ void connac2x_DumpCrRange(
 }
 
 #endif /* _HIF_PCIE || _HIF_AXI */
+
+#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
+int connac2x_get_rx_rate_info(IN struct ADAPTER *prAdapter,
+		OUT uint32_t *pu4Rate, OUT uint32_t *pu4Nss,
+		OUT uint32_t *pu4RxMode, OUT uint32_t *pu4FrMode,
+		OUT uint32_t *pu4Sgi)
+{
+	struct STA_RECORD *prStaRec;
+	uint32_t rxmode = 0, rate = 0, frmode = 0, sgi = 0, nsts = 0;
+	uint32_t groupid = 0, stbc = 0, nss = 0;
+	uint32_t u4RxVector0 = 0, u4RxVector1 = 0, u4RxVector2 = 0;
+	uint8_t ucWlanIdx, ucStaIdx;
+
+	if ((!pu4Rate) || (!pu4Nss) || (!pu4RxMode) || (!pu4FrMode) ||
+		(!pu4Sgi))
+		return -1;
+
+	prStaRec = aisGetStaRecOfAP(prAdapter, AIS_DEFAULT_INDEX);
+	if (prStaRec) {
+		ucWlanIdx = prStaRec->ucWlanIndex;
+	} else {
+		DBGLOG(SW4, ERROR, "prStaRecOfAP is null\n");
+		return -1;
+	}
+
+	if (wlanGetStaIdxByWlanIdx(prAdapter, ucWlanIdx, &ucStaIdx) ==
+		WLAN_STATUS_SUCCESS) {
+		u4RxVector0 = prAdapter->arStaRec[ucStaIdx].u4RxVector0;
+		u4RxVector1 = prAdapter->arStaRec[ucStaIdx].u4RxVector1;
+		u4RxVector2 = prAdapter->arStaRec[ucStaIdx].u4RxVector2;
+		if ((u4RxVector0 == 0) || (u4RxVector1 == 0) ||
+			(u4RxVector2 == 0)) {
+			DBGLOG(SW4, WARN, "RxVector1 or RxVector2 is 0\n");
+			return -1;
+		}
+	} else {
+		DBGLOG(SW4, ERROR, "wlanGetStaIdxByWlanIdx fail\n");
+		return -1;
+	}
+
+	/* P-RXV1 */
+	rate = (u4RxVector0 & CONNAC2X_RX_VT_RX_RATE_MASK)
+				>> CONNAC2X_RX_VT_RX_RATE_OFFSET;
+	nsts = ((u4RxVector0 & CONNAC2X_RX_VT_NSTS_MASK)
+				>> CONNAC2X_RX_VT_NSTS_OFFSET);
+
+	/* C-B-0 */
+	rxmode = (u4RxVector1 & CONNAC2X_RX_VT_RX_MODE_MASK)
+				>> CONNAC2X_RX_VT_RX_MODE_OFFSET;
+	frmode = (u4RxVector1 & CONNAC2X_RX_VT_FR_MODE_MASK)
+				>> CONNAC2X_RX_VT_FR_MODE_OFFSET;
+	sgi = (u4RxVector1 & CONNAC2X_RX_VT_SHORT_GI_MASK)
+				>> CONNAC2X_RX_VT_SHORT_GI_OFFSET;
+	stbc = (u4RxVector1 & CONNAC2X_RX_VT_STBC_MASK)
+				>> CONNAC2X_RX_VT_STBC_OFFSET;
+	/* C-B-1 */
+	groupid = (u4RxVector2 & CONNAC2X_RX_VT_GROUP_ID_MASK)
+				>> CONNAC2X_RX_VT_GROUP_ID_OFFSET;
+
+	/* Since NSTS gets from RXRPT, always plus one */
+	nsts += 1;
+	if (nsts == 1)
+		nss = nsts;
+	else
+		nss = stbc ? (nsts >> 1) : nsts;
+
+	if (frmode >= 4) {
+		DBGLOG(SW4, ERROR, "frmode error: %u\n", frmode);
+		return -1;
+	}
+
+	*pu4Rate = rate;
+	*pu4Nss = nss;
+	*pu4RxMode = rxmode;
+	*pu4FrMode = frmode;
+	*pu4Sgi = sgi;
+
+	DBGLOG(SW4, TRACE,
+		   "rxmode=[%u], rate=[%u], bw=[%u], sgi=[%u], nss=[%u]\n",
+		   rxmode, rate, frmode, sgi, nss
+	);
+
+	return 0;
+}
+#endif
 
 #endif /* CFG_SUPPORT_CONNAC2X */

@@ -39,8 +39,8 @@
 #define SOC7_0_DMASHDL_PKT_PSE_MAX_PAGE                (0x18)
 #define SOC7_0_DMASHDL_GROUP_0_REFILL_EN               (1)
 #define SOC7_0_DMASHDL_GROUP_1_REFILL_EN               (1)
-#define SOC7_0_DMASHDL_GROUP_2_REFILL_EN               (0)
-#define SOC7_0_DMASHDL_GROUP_3_REFILL_EN               (0)
+#define SOC7_0_DMASHDL_GROUP_2_REFILL_EN               (1)
+#define SOC7_0_DMASHDL_GROUP_3_REFILL_EN               (1)
 #define SOC7_0_DMASHDL_GROUP_4_REFILL_EN               (0)
 #define SOC7_0_DMASHDL_GROUP_5_REFILL_EN               (0)
 #define SOC7_0_DMASHDL_GROUP_6_REFILL_EN               (0)
@@ -53,10 +53,10 @@
 #define SOC7_0_DMASHDL_GROUP_13_REFILL_EN              (0)
 #define SOC7_0_DMASHDL_GROUP_14_REFILL_EN              (0)
 #define SOC7_0_DMASHDL_GROUP_15_REFILL_EN              (0)
-#define SOC7_0_DMASHDL_GROUP_0_MAX_QUOTA               (0xFFF)
-#define SOC7_0_DMASHDL_GROUP_1_MAX_QUOTA               (0xFFF)
-#define SOC7_0_DMASHDL_GROUP_2_MAX_QUOTA               (0x0)
-#define SOC7_0_DMASHDL_GROUP_3_MAX_QUOTA               (0x0)
+#define SOC7_0_DMASHDL_GROUP_0_MAX_QUOTA               (0x200)
+#define SOC7_0_DMASHDL_GROUP_1_MAX_QUOTA               (0x200)
+#define SOC7_0_DMASHDL_GROUP_2_MAX_QUOTA               (0x200)
+#define SOC7_0_DMASHDL_GROUP_3_MAX_QUOTA               (0x1ff)
 #define SOC7_0_DMASHDL_GROUP_4_MAX_QUOTA               (0x0)
 #define SOC7_0_DMASHDL_GROUP_5_MAX_QUOTA               (0x0)
 #define SOC7_0_DMASHDL_GROUP_6_MAX_QUOTA               (0x0)
@@ -69,10 +69,10 @@
 #define SOC7_0_DMASHDL_GROUP_13_MAX_QUOTA              (0x0)
 #define SOC7_0_DMASHDL_GROUP_14_MAX_QUOTA              (0x0)
 #define SOC7_0_DMASHDL_GROUP_15_MAX_QUOTA              (0x30)
-#define SOC7_0_DMASHDL_GROUP_0_MIN_QUOTA               (0x3)
-#define SOC7_0_DMASHDL_GROUP_1_MIN_QUOTA               (0x3)
-#define SOC7_0_DMASHDL_GROUP_2_MIN_QUOTA               (0x0)
-#define SOC7_0_DMASHDL_GROUP_3_MIN_QUOTA               (0x0)
+#define SOC7_0_DMASHDL_GROUP_0_MIN_QUOTA               (0x10)
+#define SOC7_0_DMASHDL_GROUP_1_MIN_QUOTA               (0x10)
+#define SOC7_0_DMASHDL_GROUP_2_MIN_QUOTA               (0x10)
+#define SOC7_0_DMASHDL_GROUP_3_MIN_QUOTA               (0x10)
 #define SOC7_0_DMASHDL_GROUP_4_MIN_QUOTA               (0x0)
 #define SOC7_0_DMASHDL_GROUP_5_MIN_QUOTA               (0x0)
 #define SOC7_0_DMASHDL_GROUP_6_MIN_QUOTA               (0x0)
@@ -88,19 +88,19 @@
 #define SOC7_0_DMASHDL_QUEUE_0_TO_GROUP                (0x0)   /* LMAC AC00 */
 #define SOC7_0_DMASHDL_QUEUE_1_TO_GROUP                (0x0)   /* LMAC AC01 */
 #define SOC7_0_DMASHDL_QUEUE_2_TO_GROUP                (0x0)   /* LMAC AC02 */
-#define SOC7_0_DMASHDL_QUEUE_3_TO_GROUP                (0x0)   /* LMAC AC03 */
+#define SOC7_0_DMASHDL_QUEUE_3_TO_GROUP                (0x2)   /* LMAC AC03 */
 #define SOC7_0_DMASHDL_QUEUE_4_TO_GROUP                (0x1)   /* LMAC AC10 */
 #define SOC7_0_DMASHDL_QUEUE_5_TO_GROUP                (0x1)   /* LMAC AC11 */
 #define SOC7_0_DMASHDL_QUEUE_6_TO_GROUP                (0x1)   /* LMAC AC12 */
-#define SOC7_0_DMASHDL_QUEUE_7_TO_GROUP                (0x1)   /* LMAC AC13 */
+#define SOC7_0_DMASHDL_QUEUE_7_TO_GROUP                (0x2)   /* LMAC AC13 */
 #define SOC7_0_DMASHDL_QUEUE_8_TO_GROUP                (0x0)   /* LMAC AC20 */
 #define SOC7_0_DMASHDL_QUEUE_9_TO_GROUP                (0x0)   /* LMAC AC21 */
 #define SOC7_0_DMASHDL_QUEUE_10_TO_GROUP               (0x0)   /* LMAC AC22 */
-#define SOC7_0_DMASHDL_QUEUE_11_TO_GROUP               (0x0)   /* LMAC AC23 */
-#define SOC7_0_DMASHDL_QUEUE_12_TO_GROUP               (0x0)   /* LMAC AC30 */
-#define SOC7_0_DMASHDL_QUEUE_13_TO_GROUP               (0x0)   /* LMAC AC31 */
-#define SOC7_0_DMASHDL_QUEUE_14_TO_GROUP               (0x0)   /* LMAC AC32 */
-#define SOC7_0_DMASHDL_QUEUE_15_TO_GROUP               (0x0)   /* LMAC AC33 */
+#define SOC7_0_DMASHDL_QUEUE_11_TO_GROUP               (0x2)   /* LMAC AC23 */
+#define SOC7_0_DMASHDL_QUEUE_12_TO_GROUP               (0x1)   /* LMAC AC30 */
+#define SOC7_0_DMASHDL_QUEUE_13_TO_GROUP               (0x1)   /* LMAC AC31 */
+#define SOC7_0_DMASHDL_QUEUE_14_TO_GROUP               (0x1)   /* LMAC AC32 */
+#define SOC7_0_DMASHDL_QUEUE_15_TO_GROUP               (0x2)   /* LMAC AC33 */
 #define SOC7_0_DMASHDL_QUEUE_16_TO_GROUP               (0x0)   /* ALTX */
 #define SOC7_0_DMASHDL_QUEUE_17_TO_GROUP               (0x0)   /* BMC */
 #define SOC7_0_DMASHDL_QUEUE_18_TO_GROUP               (0x0)   /* BCN */
@@ -133,10 +133,10 @@
 #define SOC7_0_DMASHDL_PRIORITY13_GROUP                (0xD)
 #define SOC7_0_DMASHDL_PRIORITY14_GROUP                (0xE)
 #define SOC7_0_DMASHDL_PRIORITY15_GROUP                (0xF)
-/* 3 rings are used */
-#define SOC7_0_DMASHDL_HIF_ACK_CNT_TH                  (0x3)
-/* Ring 0/1/15 are used */
-#define SOC7_0_DMASHDL_HIF_GUP_ACT_MAP                 (0x8003)
+/* 4 rings are used (3 data + cmd) */
+#define SOC7_0_DMASHDL_HIF_ACK_CNT_TH                  (0x4)
+/* Ring 0/1/2/15 are used */
+#define SOC7_0_DMASHDL_HIF_GUP_ACT_MAP                 (0x8007)
 
 /*******************************************************************************
 *                         D A T A   T Y P E S

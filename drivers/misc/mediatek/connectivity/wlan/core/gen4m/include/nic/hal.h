@@ -111,12 +111,6 @@ extern struct TIMER rSerSyncTimer;
 #define HAL_TEST_FLAG(_M, _F)            ((_M)->u4HwFlags & (_F))
 #define HAL_TEST_FLAGS(_M, _F)           (((_M)->u4HwFlags & (_F)) == (_F))
 
-#if CFG_SUPPORT_SNIFFER
-#define HAL_MON_EN(_prAdapter) (_prAdapter->prGlueInfo->fgIsEnableMon)
-#else
-#define HAL_MON_EN(_prAdapter) FALSE
-#endif
-
 #if defined(_HIF_SDIO)
 #define HAL_MCR_RD(_prAdapter, _u4Offset, _pu4Value) \
 do { \
@@ -1160,7 +1154,8 @@ uint32_t halGetChipSwVer(IN struct ADAPTER *prAdapter);
 
 uint32_t halRxWaitResponse(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucPortIdx, OUT uint8_t *pucRspBuffer,
-	IN uint32_t u4MaxRespBufferLen, OUT uint32_t *pu4Length);
+	IN uint32_t u4MaxRespBufferLen, OUT uint32_t *pu4Length,
+	IN uint32_t u4WaitingInterval, IN uint32_t u4TimeoutValue);
 
 void halEnableInterrupt(IN struct ADAPTER *prAdapter);
 void halDisableInterrupt(IN struct ADAPTER *prAdapter);

@@ -8,6 +8,7 @@
 #include <linux/of_device.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/suspend.h>
 
 #include <connectivity_build_in_adapter.h>
 
@@ -15,9 +16,11 @@
 #include "consys_hw.h"
 #include "emi_mng.h"
 #include "pmic_mng.h"
+#include "clock_mng.h"
 #include "consys_reg_mng.h"
-
 #include "connsys_debug_utility.h"
+#include "coredump_mng.h"
+#include "conn_power_throttling.h"
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -59,8 +62,8 @@ enum conninfra_pwr_on_rollback_type
 
 static int mtk_conninfra_probe(struct platform_device *pdev);
 static int mtk_conninfra_remove(struct platform_device *pdev);
-static int mtk_conninfra_suspend(struct platform_device *pdev, pm_message_t state);
-static int mtk_conninfra_resume(struct platform_device *pdev);
+static int mtk_conninfra_suspend(void);
+static int mtk_conninfra_resume(void);
 static int get_consys_platform_ops(struct platform_device *pdev);
 
 static int _consys_hw_conninfra_wakeup(void);
@@ -83,8 +86,6 @@ extern const struct of_device_id apconninfra_of_ids[];
 static struct platform_driver mtk_conninfra_dev_drv = {
 	.probe = mtk_conninfra_probe,
 	.remove = mtk_conninfra_remove,
-	.suspend = mtk_conninfra_suspend,
-	.resume = mtk_conninfra_resume,
 	.driver = {
 		   .name = "mtk_conninfra",
 		   .owner = THIS_MODULE,
@@ -109,6 +110,16 @@ const struct conninfra_plat_data *g_conninfra_plat_data = NULL;
 
 struct pinctrl *g_conninfra_pinctrl_ptr = NULL;
 static atomic_t g_hw_init_done = ATOMIC_INIT(0);
+
+static unsigned int g_adie_chipid = 0;
+static OSAL_SLEEPABLE_LOCK g_adie_chipid_lock;
+
+/* this config is defined by each platform, used to change setting by dbg command. */
+/* MT6983: for sleep mode control */
+static int g_platform_config;
+
+static struct notifier_block conninfra_pm_notifier;
+
 /*******************************************************************************
 *                           P R I V A T E   D A T A
 ********************************************************************************
@@ -155,6 +166,11 @@ unsigned int consys_hw_get_hw_ver(void)
 int consys_hw_reg_readable(void)
 {
 	return consys_reg_mng_reg_readable();
+}
+
+int consys_hw_reg_readable_for_coredump(void)
+{
+	return consys_reg_mng_reg_readable_for_coredump();
 }
 
 int consys_hw_is_connsys_reg(phys_addr_t addr)
@@ -243,6 +259,47 @@ int _consys_hw_pwr_on_rollback(enum conninfra_pwr_on_rollback_type type)
 	return 0;
 }
 
+unsigned int consys_hw_get_ic_info(enum connsys_ic_info_type type)
+{
+	if (type == CONNSYS_SOC_CHIPID) {
+		return consys_hw_chipid_get();
+	} else if (type == CONNSYS_HW_VER) {
+		return consys_hw_get_hw_ver();
+	} else if (type == CONNSYS_ADIE_CHIPID) {
+		return g_adie_chipid;
+	}
+
+	return 0;
+}
+
+unsigned int consys_hw_detect_adie_chipid(void)
+{
+	int chipid = 0;
+
+	if (osal_lock_sleepable_lock(&g_adie_chipid_lock))
+		return 0;
+
+	/* detect a-die only once */
+	if (g_adie_chipid) {
+		osal_unlock_sleepable_lock(&g_adie_chipid_lock);
+		return g_adie_chipid;
+	}
+
+	if (consys_hw_ops->consys_plt_adie_detection) {
+		chipid = consys_hw_ops->consys_plt_adie_detection();
+
+		if (chipid > 0) {
+			g_adie_chipid = chipid;
+			pr_info("A-die chipid detection done, found chipid=[%x]\n", chipid);
+		} else
+			pr_info("Fail to detect a-die chipid, found chipid=[%x]\n", chipid);
+	}
+
+	osal_unlock_sleepable_lock(&g_adie_chipid_lock);
+
+	return g_adie_chipid;
+}
+
 int consys_hw_pwr_on(unsigned int curr_status, unsigned int on_radio)
 {
 	int ret;
@@ -308,6 +365,8 @@ int consys_hw_pwr_on(unsigned int curr_status, unsigned int on_radio)
 			_consys_hw_pwr_on_rollback(CONNINFRA_PWR_ON_A_DIE_FAIL);
 			return CONNINFRA_POWER_ON_A_DIE_FAIL;
 		}
+		if (consys_hw_ops->consys_plt_afe_sw_patch)
+			consys_hw_ops->consys_plt_afe_sw_patch();
 		if (consys_hw_ops->consys_plt_afe_wbg_cal)
 			consys_hw_ops->consys_plt_afe_wbg_cal();
 		if (consys_hw_ops->consys_plt_subsys_pll_initial)
@@ -402,10 +461,10 @@ int consys_hw_reset_power_state(void)
 	return ret;
 }
 
-int consys_hw_dump_power_state(void)
+int consys_hw_dump_power_state(char *buf, unsigned int size)
 {
 	if (consys_hw_ops && consys_hw_ops->consys_plt_power_state)
-		consys_hw_ops->consys_plt_power_state();
+		consys_hw_ops->consys_plt_power_state(buf, size);
 	return 0;
 }
 
@@ -420,6 +479,13 @@ int consys_hw_spi_write(enum sys_spi_subsystem subsystem, unsigned int addr, uns
 {
 	if (consys_hw_ops->consys_plt_spi_write)
 		return consys_hw_ops->consys_plt_spi_write(subsystem, addr, data);
+	return -1;
+}
+
+int consys_hw_spi_update_bits(enum sys_spi_subsystem subsystem, unsigned int addr, unsigned int data, unsigned int mask)
+{
+	if (consys_hw_ops->consys_plt_spi_update_bits)
+		return consys_hw_ops->consys_plt_spi_update_bits(subsystem, addr, data, mask);
 	return -1;
 }
 
@@ -605,6 +671,20 @@ u64 consys_hw_soc_timestamp_get(void)
 	return 0;
 }
 
+int consys_hw_pre_cal_backup(unsigned int offset, unsigned int size)
+{
+	if (consys_hw_ops->consys_plt_pre_cal_backup)
+		return consys_hw_ops->consys_plt_pre_cal_backup(offset, size);
+	return 0;
+}
+
+int consys_hw_pre_cal_clean_data(void)
+{
+	if (consys_hw_ops->consys_plt_pre_cal_clean_data)
+		return consys_hw_ops->consys_plt_pre_cal_clean_data();
+	return 0;
+}
+
 int mtk_conninfra_probe(struct platform_device *pdev)
 {
 	int ret = -1;
@@ -650,14 +730,18 @@ int mtk_conninfra_probe(struct platform_device *pdev)
 	/* Setup connsys log emi base */
 	emi_info = emi_mng_get_phy_addr();
 	if (emi_info) {
-		connsys_dedicated_log_path_apsoc_init((phys_addr_t)emi_info->emi_ap_phy_addr);
+		connsys_dedicated_log_path_apsoc_init((phys_addr_t)emi_info->emi_ap_phy_addr,
+                                        g_conninfra_plat_data->connsyslog_config);
 	} else {
 		pr_err("Connsys log didn't init because EMI is invalid\n");
 	}
 
 	consys_hw_tcxo_parser(pdev);
 
+	coredump_mng_init(g_conninfra_plat_data);
 	g_pdev = pdev;
+
+	osal_sleepable_lock_init(&g_adie_chipid_lock);
 
 	atomic_set(&g_hw_init_done, 1);
 	return 0;
@@ -665,24 +749,33 @@ int mtk_conninfra_probe(struct platform_device *pdev)
 
 int mtk_conninfra_remove(struct platform_device *pdev)
 {
+	if (consys_hw_ops->consys_plt_clk_detach)
+		consys_hw_ops->consys_plt_clk_detach();
+	else
+		pr_info("consys_plt_clk_detach is null");
+
 	atomic_set(&g_hw_init_done, 0);
 	if (g_pdev)
 		g_pdev = NULL;
 
+	osal_sleepable_lock_deinit(&g_adie_chipid_lock);
 	return 0;
 }
 
-int mtk_conninfra_suspend(struct platform_device *pdev, pm_message_t state)
+static int mtk_conninfra_suspend(void)
 {
 	int ret = 0;
 
 	/* suspend callback is in atomic context */
 	if (g_conninfra_dev_cb && g_conninfra_dev_cb->conninfra_suspend_cb)
 		ret = (*g_conninfra_dev_cb->conninfra_suspend_cb)();
+
+	conn_pwr_suspend();
+
 	return ret;
 }
 
-int mtk_conninfra_resume(struct platform_device *pdev)
+static int mtk_conninfra_resume(void)
 {
 	/* suspend callback is in atomic context */
 	schedule_work(&ap_resume_work);
@@ -694,12 +787,52 @@ static void consys_hw_ap_resume_handler(struct work_struct *work)
 {
 	if (g_conninfra_dev_cb && g_conninfra_dev_cb->conninfra_resume_cb)
 		(*g_conninfra_dev_cb->conninfra_resume_cb)();
+
+	conn_pwr_resume();
+}
+
+/* this function is used by conninfra_dbg. */
+int consys_hw_set_platform_config(int value)
+{
+	g_platform_config = value;
+	return 0;
+}
+
+int consys_hw_get_platform_config(void)
+{
+	return g_platform_config;
+}
+
+static int conninfra_pm_notifier_callback(struct notifier_block *nb,
+		unsigned long event, void *dummy)
+{
+	switch (event) {
+		case PM_SUSPEND_PREPARE:
+			mtk_conninfra_suspend();
+			break;
+		case PM_POST_SUSPEND:
+			mtk_conninfra_resume();
+			break;
+		default:
+			break;
+	}
+	return NOTIFY_DONE;
+}
+
+void consys_hw_set_mcu_control(int type, bool onoff)
+{
+	if (consys_hw_ops->consys_plt_set_mcu_control)
+		consys_hw_ops->consys_plt_set_mcu_control(type, onoff);
+	else
+		pr_notice("consys_plt_set_mcu_control not supported\n");
 }
 
 int consys_hw_init(struct conninfra_dev_cb *dev_cb)
 {
-	int iRet = 0, retry = 0;
+	int iRet = 0, retry = 0, ret = 0;
 	static DEFINE_RATELIMIT_STATE(_rs, HZ, 1);
+	phys_addr_t emi_addr = 0;
+	unsigned int emi_size = 0;
 
 	g_conninfra_dev_cb = dev_cb;
 	atomic_set(&g_hw_init_done, 0);
@@ -707,7 +840,7 @@ int consys_hw_init(struct conninfra_dev_cb *dev_cb)
 	if (iRet)
 		pr_err("Conninfra platform driver registered failed(%d)\n", iRet);
 	else {
-		while (atomic_read(&g_hw_init_done) == 0 && retry < 100) {
+		while (atomic_read(&g_hw_init_done) == 0) {
 			osal_sleep_ms(50);
 			retry++;
 			if (__ratelimit(&_rs))
@@ -715,7 +848,19 @@ int consys_hw_init(struct conninfra_dev_cb *dev_cb)
 		}
 	}
 
+	pmic_mng_register_device();
+	clock_mng_register_device();
+
+	conninfra_get_phy_addr(&emi_addr, &emi_size);
+	connectivity_export_conap_scp_init(consys_hw_get_ic_info(CONNSYS_SOC_CHIPID), emi_addr);
+
 	INIT_WORK(&ap_resume_work, consys_hw_ap_resume_handler);
+
+	conninfra_pm_notifier.notifier_call = conninfra_pm_notifier_callback;
+	ret = register_pm_notifier(&conninfra_pm_notifier);
+	if (ret < 0)
+		pr_notice("%s register_pm_notifier fail %d\n", ret);
+
 	pr_info("[consys_hw_init] result [%d]\n", iRet);
 
 	return iRet;
@@ -724,6 +869,7 @@ int consys_hw_init(struct conninfra_dev_cb *dev_cb)
 int consys_hw_deinit(void)
 {
 	platform_driver_unregister(&mtk_conninfra_dev_drv);
+	unregister_pm_notifier(&conninfra_pm_notifier);
 	g_conninfra_dev_cb = NULL;
 	return 0;
 }

@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #ifndef _GPS_DL_HAL_H
 #define _GPS_DL_HAL_H
 
@@ -17,6 +10,7 @@
 #include "gps_dl_dma_buf.h"
 #include "gps_dl_hal_type.h"
 #include "gps_dl_isr.h"
+#include "gps_dl_hw_dep_macro.h"
 
 /* for gps_each_device.c */
 
@@ -30,6 +24,12 @@ enum gps_dl_hal_power_ctrl_op_enum {
 	GPS_DL_HAL_ENTER_DPSTOP = 4,
 	GPS_DL_HAL_LEAVE_DPSTOP = 5,
 	GPS_DL_HAL_POWER_OP_MAX
+};
+
+struct gps_each_dsp_reg_read_value {
+	unsigned int record_d2a_index;
+	/* g_gps_rec_dsp_value include d2a0 history value and last d2a1 value */
+	unsigned int g_gps_rec_dsp_value[GPS_DSP_REG_DBG_POLL_MAX + 1];
 };
 
 bool gps_dl_hal_conn_infra_driver_on(void);
@@ -80,9 +80,12 @@ int gps_dl_hal_usrt_direct_read(enum gps_dl_link_id_enum link_id,
 
 void gps_each_dsp_reg_read_ack(
 	enum gps_dl_link_id_enum link_id, const struct gps_dl_hal_mcub_info *p_d2a);
+void gps_each_dsp_reg_dump_if_any_rec(enum gps_dl_link_id_enum link_id);
 void gps_each_dsp_reg_gourp_read_init(enum gps_dl_link_id_enum link_id);
 void gps_each_dsp_reg_gourp_read_start(enum gps_dl_link_id_enum link_id,
 	bool dbg, unsigned int round_max);
+void gps_dl_hal_show_dsp_reg(unsigned char *tag,  enum gps_dl_link_id_enum link_id,
+	unsigned int *buf, unsigned int len);
 
 enum GDL_RET_STATUS gps_each_dsp_reg_read_request(
 	enum gps_dl_link_id_enum link_id, unsigned int reg_addr);
@@ -107,6 +110,8 @@ void gps_dl_hal_load_clock_flag(void);
 
 void gps_dl_hal_set_conn_infra_ver(unsigned int ver);
 unsigned int gps_dl_hal_get_conn_infra_ver(void);
+void gps_dl_hal_set_adie_ver(unsigned int ver);
+unsigned int gps_dl_hal_get_adie_ver(void);
 bool gps_dl_hal_conn_infra_ver_is_mt6885(void);
 bool gps_dl_hal_conn_infra_ver_is_mt6893(void);
 

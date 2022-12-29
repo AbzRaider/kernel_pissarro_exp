@@ -294,11 +294,11 @@ static void mt7961Connac2xProcessTxInterrupt(
 	rIntrStatus = (union WPDMA_INT_STA_STRUCT)prHifInfo->u4IntStatus;
 	if (rIntrStatus.field_conn2x_single.wfdma0_tx_done_16)
 		halWpdmaProcessCmdDmaDone(
-			prAdapter->prGlueInfo, TX_RING_FWDL_IDX_3);
+			prAdapter->prGlueInfo, TX_RING_FWDL_IDX_4);
 
 	if (rIntrStatus.field_conn2x_single.wfdma0_tx_done_17)
 		halWpdmaProcessCmdDmaDone(
-			prAdapter->prGlueInfo, TX_RING_CMD_IDX_2);
+			prAdapter->prGlueInfo, TX_RING_CMD_IDX_3);
 
 	if (rIntrStatus.field_conn2x_single.wfdma0_tx_done_0) {
 		halWpdmaProcessDataDmaDone(
@@ -597,11 +597,15 @@ struct CHIP_DBG_OPS mt7961DebugOps = {
 	.showCsrInfo = NULL,
 	.showDmaschInfo = NULL,
 	.dumpMacInfo = NULL,
+	.dumpTxdInfo = NULL,
 	.showHifInfo = NULL,
 	.printHifDbgInfo = NULL,
 	.show_rx_rate_info = connac2x_show_rx_rate_info,
 	.show_rx_rssi_info = connac2x_show_rx_rssi_info,
 	.show_stat_info = connac2x_show_stat_info,
+#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
+	.get_rx_rate_info = connac2x_get_rx_rate_info
+#endif
 };
 
 /* Litien code refine to support multi chip */

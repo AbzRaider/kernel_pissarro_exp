@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_config.h"
 
 #include "gps_dl_context.h"
@@ -33,7 +26,7 @@ unsigned int gps_dl_hw_get_gps_emi_remapping(void)
 	return GDL_HW_GET_CONN_INFRA_ENTRY(GDL_HW_SET_EMI_REMAP_FIELD);
 }
 
-#if GPS_DL_ON_CTP
+#if GPS_DL_USE_PERI_REMAP
 void gps_dl_hw_set_gps_peri_remapping(unsigned int _20msb_of_36bit_phy_addr)
 {
 	GDL_HW_SET_CONN_INFRA_ENTRY(GDL_HW_SET_PERI_REMAP_FIELD, _20msb_of_36bit_phy_addr);
@@ -75,6 +68,8 @@ void gps_dl_hw_print_hw_status(enum gps_dl_link_id_enum link_id, bool dump_rf_cr
 	GDL_HW_RD_GPS_REG(0x80073160); /* DL0 */
 	GDL_HW_RD_GPS_REG(0x80073134); /* DL1 */
 
+	GDL_HW_GET_CONN_INFRA_ADIE();
+
 	GDL_HW_RD_SPI_GPS_STATUS();
 
 	if (dump_rf_cr) {
@@ -91,12 +86,19 @@ void gps_dl_hw_print_hw_status(enum gps_dl_link_id_enum link_id, bool dump_rf_cr
 void gps_dl_hw_do_gps_a2z_dump(void)
 {
 	GDL_HW_WR_GPS_REG(0x80073120, 1); /* enable A2Z */
+	GDL_HW_RD_GPS_REG(0x80072228);
+	GDL_HW_RD_GPS_REG(0x80082228);
 	GDL_HW_RD_GPS_REG(0x8007048C);
 	GDL_HW_RD_GPS_REG(0x8008048C);
 	GDL_HW_RD_GPS_REG(0x80080680);
 	GDL_HW_RD_GPS_REG(0x800806C0);
 	GDL_HW_RD_GPS_REG(0x80070680);
 	GDL_HW_RD_GPS_REG(0x800706C0);
+	GDL_HW_RD_GPS_REG(0x800706C8);
+	GDL_HW_RD_GPS_REG(0x800706CC);
+	GDL_HW_RD_GPS_REG(0x800806CC);
+	GDL_HW_RD_GPS_REG(0x800747D0);
+	GDL_HW_RD_GPS_REG(0x800747D4);
 	GDL_HW_RD_GPS_REG(0x80070450);
 	GDL_HW_RD_GPS_REG(0x80080450);
 	GDL_HW_RD_GPS_REG(0x800704b4);
@@ -282,6 +284,7 @@ bool gps_dl_hw_is_pta_uart_init_done(void)
 #define CONN_UART_PTA_FCR_RFTL_HIGH_BIT_MASK 0x00000080
 #define CONN_UART_PTA_FCR_RFTL_HIGH_BIT_SHFT 7
 
+#if GPS_DL_BLANKING_KEEP_IDC_MODE
 bool gps_dl_hw_init_pta_uart(void)
 {
 #if 0
@@ -364,6 +367,7 @@ bool gps_dl_hw_init_pta_uart(void)
 
 	return true;
 }
+#endif
 
 void gps_dl_hw_deinit_pta_uart(void)
 {
@@ -391,6 +395,7 @@ bool gps_dl_hw_is_pta_init_done(void)
 	return done;
 }
 
+#if GPS_DL_BLANKING_KEEP_IDC_MODE
 void gps_dl_hw_init_pta(void)
 {
 	unsigned int pta_en;
@@ -412,6 +417,7 @@ void gps_dl_hw_init_pta(void)
 	} else
 		GDL_LOGI("pta_en = %d, pta_arb_en = %d, okay", pta_en, pta_arb_en);
 }
+#endif
 
 void gps_dl_hw_deinit_pta(void)
 {

@@ -106,6 +106,7 @@ static struct assert_work_st wmt_assert_work;
 
 static INT32 g_bt_no_acl_link = 1;
 static INT32 g_bt_no_br_acl_link = 1;
+static atomic_t g_AdieWorkable = ATOMIC_INIT(1);
 
 #define CONSYS_MET_WAIT	(1000*10) /* ms */
 #define MET_DUMP_MAX_NUM (1)
@@ -1076,6 +1077,11 @@ VOID wmt_lib_set_bt_link_status(INT32 type, INT32 value)
 		g_bt_no_br_acl_link = value;
 }
 
+PVOID wmt_lib_consys_clock_get_regmap(VOID)
+{
+	return mtk_wcn_consys_clock_get_regmap();
+}
+
 /*
  * Allow BT to reset as long as one of the conditions is true.
  * 1. no ACL link
@@ -1086,13 +1092,13 @@ static INT32 wmt_lib_is_bt_able_to_reset(VOID)
 	if (g_bt_no_acl_link)
 		return 1;
 	else if (g_bt_no_br_acl_link) {
-		struct timeval time;
+		struct timespec64 time;
 		ULONG local_time;
 		struct rtc_time tm;
 
 		osal_do_gettimeofday(&time);
 		local_time = (ULONG)(time.tv_sec - (sys_tz.tz_minuteswest * 60));
-		rtc_time_to_tm(local_time, &tm);
+		rtc_time64_to_tm(local_time, &tm);
 		if (tm.tm_hour == 2)
 			return 1;
 	}
@@ -1338,7 +1344,7 @@ static INT32 met_thread(void *pvData)
 	}
 	osal_memset(met_dump_buf, 0, MET_DUMP_SIZE);
 
-	emi_met_base = ioremap_nocache(emi_info->emi_ap_phy_addr + emi_met_offset, emi_met_size);
+	emi_met_base = ioremap(emi_info->emi_ap_phy_addr + emi_met_offset, emi_met_size);
 	if (!emi_met_base) {
 		osal_free(met_dump_buf);
 		WMT_ERR_FUNC("met emi ioremap fail\n");
@@ -1802,6 +1808,15 @@ UINT32 wmt_lib_get_icinfo(ENUM_WMT_CHIPINFO_TYPE_T index)
 
 }
 
+UINT32 wmt_lib_get_adie_workable(VOID)
+{
+	return atomic_read(&g_AdieWorkable);
+}
+
+VOID wmt_lib_set_adie_workable(UINT32 workable)
+{
+	atomic_set(&g_AdieWorkable, ((workable > 0) ? 1 : 0));
+}
 
 PUINT8 wmt_lib_def_patch_name(VOID)
 {
@@ -2629,7 +2644,10 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset, UINT8 *buf, UI
 		if (!pAddr) {
 			WMT_ERR_FUNC("wmt-lib: get EMI virtual base address fail\n");
 		} else {
+			#ifndef OPLUS_BUG_STABILITY
+			//Remove for reduce useless log.
 			WMT_INFO_FUNC("vir addr(0x%p)\n", pAddr);
+			#endif /* OPLUS_BUG_STABILITY */
 			osal_memcpy_fromio(&buf[0], pAddr, len);
 		}
 	} else {
@@ -2663,7 +2681,10 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset, UINT8 *buf, UI
 			if (!pAddr) {
 				WMT_ERR_FUNC("wmt-lib: get EMI virtual base address fail\n");
 			} else {
+				#ifndef OPLUS_BUG_STABILITY
+				//Remove for reduce useless log.
 				WMT_INFO_FUNC("vir addr(0x%p)\n", pAddr);
+				#endif /* OPLUS_BUG_STABILITY */
 				osal_memcpy_fromio(&buf[0], pAddr, len);
 			}
 		}

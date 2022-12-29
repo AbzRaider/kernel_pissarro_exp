@@ -85,30 +85,50 @@
 
 #endif /* CFG_SUPPORT_CONNAC2X == 1 */
 
-#define NUM_OF_TX_RING				(4+NUM_OF_WFDMA1_TX_RING)
+/*
+ * 3 data ring (ring0 + ring1[DBDC] + ring2[priority])
+ * fwdl ring
+ * cmd ring
+ */
+#define NUM_OF_TX_RING				(5+NUM_OF_WFDMA1_TX_RING)
 #define NUM_OF_RX_RING				(2+NUM_OF_WFDMA1_RX_RING)
 
-#if (CFG_SUPPORT_CONNAC2X_2x2 == 1)
+#ifdef CONFIG_MTK_WIFI_HE160
+#define TX_RING_SIZE				1024
+#define RX_RING_SIZE				1024 /* Max Rx ring size */
+/* Data Rx ring */
+#define RX_RING0_SIZE				1024
+/* Event/MSDU_report Rx ring */
+#define RX_RING1_SIZE				128
+#define HIF_NUM_OF_QM_RX_PKT_NUM	4096
+#define HIF_TX_MSDU_TOKEN_NUM		(TX_RING_SIZE * 4)
+#elif defined(CONFIG_MTK_WIFI_HE80)
 #define TX_RING_SIZE				1024
 #define RX_RING_SIZE				1024 /* Max Rx ring size */
 /* Data Rx ring */
 #define RX_RING0_SIZE				1024
 /* Event/MSDU_report Rx ring */
 #define RX_RING1_SIZE				16
-#else
-#if defined(SOC2_1X1) || defined(SOC2_2X2)
+#define HIF_NUM_OF_QM_RX_PKT_NUM	2048
+#define HIF_TX_MSDU_TOKEN_NUM		(TX_RING_SIZE * 2)
+#elif defined(CONFIG_MTK_WIFI_VHT80)
 #define TX_RING_SIZE				512
 #define RX_RING_SIZE				512	/* Max Rx ring size */
 /* Data Rx ring */
 #define RX_RING0_SIZE				512
+/* Event/MSDU_report Rx ring */
+#define RX_RING1_SIZE				16
+#define HIF_NUM_OF_QM_RX_PKT_NUM	2048
+#define HIF_TX_MSDU_TOKEN_NUM		(TX_RING_SIZE * 3)
 #else
 #define TX_RING_SIZE				256
 #define RX_RING_SIZE				256	/* Max Rx ring size */
 /* Data Rx ring */
 #define RX_RING0_SIZE				256
-#endif /* defined(SOC2_1X1) || defined(SOC2_2X2) */
 /* Event/MSDU_report Rx ring */
 #define RX_RING1_SIZE				16
+#define HIF_NUM_OF_QM_RX_PKT_NUM	2048
+#define HIF_TX_MSDU_TOKEN_NUM		(TX_RING_SIZE * 3)
 #endif
 
 /* TXD_SIZE = TxD + TxInfo */
@@ -121,7 +141,6 @@
 
 #define HIF_TX_PREALLOC_DATA_BUFFER			1
 
-#define HIF_NUM_OF_QM_RX_PKT_NUM			2048
 #define HIF_IST_LOOP_COUNT					32
 /* Min msdu count to trigger Tx during INT polling state */
 #define HIF_IST_TX_THRESHOLD				1
@@ -151,13 +170,7 @@
 #define HIF_CR4_FWDL_SECTION_NUM			1
 #define HIF_IMG_DL_STATUS_PORT_IDX			1
 
-#define HIF_TX_INIT_CMD_PORT				TX_RING_FWDL_IDX_3
-
-#if defined(SOC2_1X1) || defined(SOC2_2X2)
-#define HIF_TX_MSDU_TOKEN_NUM				(TX_RING_SIZE * 3)
-#else
-#define HIF_TX_MSDU_TOKEN_NUM				(TX_RING_SIZE * 2)
-#endif /* defined(SOC2_1X1) || defined(SOC2_2X2) */
+#define HIF_TX_INIT_CMD_PORT				TX_RING_FWDL_IDX_4
 
 #define HIF_TX_PAYLOAD_LENGTH				72
 
@@ -186,7 +199,7 @@
 #define DMA_BITS_OFFSET		32
 
 #define DMA_DONE_WAITING_TIME   10
-#define DMA_DONE_WAITING_COUNT  100
+#define DMA_DONE_WAITING_COUNT  (100 * 1000)
 
 #define MT_TX_RING_BASE_EXT WPDMA_TX_RING0_BASE_PTR_EXT
 #define MT_RX_RING_BASE_EXT WPDMA_RX_RING0_BASE_PTR_EXT
@@ -212,6 +225,11 @@
 	(SW_WFDMA_CMD_NUM * SW_WFDMA_CMD_PKT_SIZE + 8)
 #define SW_WFDMA_MAX_RETRY_COUNT	100
 #define SW_WFDMA_RETRY_TIME		10
+
+#define MSDU_TOKEN_HISTORY_NUM 5
+
+#define LOG_DUMP_COUNT_PERIOD		5
+#define LOG_DUMP_FULL_DUMP_TIMES	2
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -246,9 +264,10 @@
 enum ENUM_TX_RING_IDX {
 	TX_RING_DATA0_IDX_0 = 0,
 	TX_RING_DATA1_IDX_1,
-	TX_RING_CMD_IDX_2,
-	TX_RING_FWDL_IDX_3,
-	TX_RING_WA_CMD_IDX_4,
+	TX_RING_DATA2_IDX_2,
+	TX_RING_CMD_IDX_3,
+	TX_RING_FWDL_IDX_4,
+	TX_RING_WA_CMD_IDX_5,
 };
 
 enum ENUM_RX_RING_IDX {
@@ -386,6 +405,8 @@ struct RTMP_RX_RING {
 	uint32_t hw_cnt_addr;
 	bool fgIsDumpLog;
 	uint32_t u4PendingCnt;
+	void *pvPacket;
+	uint32_t u4PacketLen;
 };
 
 struct PCIE_CHIP_CR_MAPPING {
@@ -397,7 +418,7 @@ struct PCIE_CHIP_CR_MAPPING {
 struct MSDU_TOKEN_ENTRY {
 	uint32_t u4Token;
 	u_int8_t fgInUsed;
-	struct timeval rTs;	/* token tx timestamp */
+	struct timespec64 rTs;	/* token tx timestamp */
 	uint32_t u4CpuIdx;	/* tx ring cell index */
 	struct MSDU_INFO *prMsduInfo;
 	void *prPacket;
@@ -410,6 +431,16 @@ struct MSDU_TOKEN_ENTRY {
 	uint8_t ucBssIndex;
 };
 
+struct TOKEN_HISTORY {
+	uint32_t u4UsedCnt;
+	uint32_t u4LongestId;
+};
+
+struct MSDU_TOKEN_HISTORY_INFO {
+	struct TOKEN_HISTORY au4List[MSDU_TOKEN_HISTORY_NUM];
+	uint32_t u4CurIdx;
+};
+
 struct MSDU_TOKEN_INFO {
 	uint32_t u4UsedCnt;
 	struct MSDU_TOKEN_ENTRY *aprTokenStack[HIF_TX_MSDU_TOKEN_NUM];
@@ -419,6 +450,8 @@ struct MSDU_TOKEN_INFO {
 	/* control bss index packet number */
 	uint32_t u4TxBssCnt[MAX_BSSID_NUM];
 	uint32_t u4MaxBssFreeCnt;
+
+	struct MSDU_TOKEN_HISTORY_INFO rHistory;
 };
 
 struct TX_CMD_REQ {
@@ -495,8 +528,16 @@ struct SW_WFDMA_INFO {
 	uint32_t u4CcifChlNum;
 	uint32_t u4CpuIdx;
 	uint32_t u4DmaIdx;
+	uint32_t u4CpuIdxBackup;
+	uint32_t u4DmaIdxBackup;
 	uint32_t u4MaxCnt;
 	uint8_t aucCID[SW_WFDMA_CMD_NUM];
+};
+
+enum ENUM_DMA_INT_TYPE {
+	DMA_INT_TYPE_MCU2HOST,
+	DMA_INT_TYPE_TRX,
+	DMA_INT_TYPE_NUM
 };
 
 /*******************************************************************************
@@ -508,7 +549,7 @@ void halHifRst(struct GLUE_INFO *prGlueInfo);
 bool halWpdmaAllocRing(struct GLUE_INFO *prGlueInfo, bool fgAllocMem);
 void halWpdmaFreeRing(struct GLUE_INFO *prGlueInfo);
 void halWpdmaInitRing(struct GLUE_INFO *prGlueInfo, bool fgResetHif);
-void halWpdmaInitTxRing(IN struct GLUE_INFO *prGlueInfo);
+void halWpdmaInitTxRing(IN struct GLUE_INFO *prGlueInfo, bool fgResetHif);
 void halWpdmaInitRxRing(IN struct GLUE_INFO *prGlueInfo);
 void halWpdmaProcessCmdDmaDone(IN struct GLUE_INFO *prGlueInfo,
 			       IN uint16_t u2Port);
@@ -568,7 +609,7 @@ void halHwRecoveryTimeout(unsigned long arg);
 void halHwRecoveryFromError(IN struct ADAPTER *prAdapter);
 
 /* Debug functions */
-int halTimeCompare(struct timeval *prTs1, struct timeval *prTs2);
+int halTimeCompare(struct timespec64 *prTs1, struct timespec64 *prTs2);
 void halShowPdmaInfo(IN struct ADAPTER *prAdapter);
 bool halShowHostCsrInfo(IN struct ADAPTER *prAdapter);
 void kalDumpTxRing(struct GLUE_INFO *prGlueInfo,
@@ -595,4 +636,7 @@ void halSwWfdmaGetDidx(struct GLUE_INFO *prGlueInfo, uint32_t *pu4Didx);
 bool halSwWfdmaWriteCmd(struct GLUE_INFO *prGlueInfo);
 bool halSwWfdmaProcessDmaDone(IN struct GLUE_INFO *prGlueInfo);
 void halSwWfdmaDumpDebugLog(struct GLUE_INFO *prGlueInfo);
+
+void halAddDriverLatencyCount(IN struct ADAPTER *prAdapter,
+	uint32_t u4DriverLatency);
 #endif /* HIF_PDMA_H__ */

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  */
 
 #ifdef SOC2_2X2
@@ -25,6 +24,7 @@
  */
 uint8_t *apucSoc2_2x2FwName[] = {
 	(uint8_t *) CFG_FW_FILENAME "_soc2_0",
+	(uint8_t *) CFG_FW_FILENAME "_soc2_2",
 	NULL
 };
 
@@ -122,7 +122,7 @@ void soc2_2x2ConstructFirmwarePrio(struct GLUE_INFO *prGlueInfo,
 	uint8_t aucFlavor[2] = {0};
 	int ret = 0;
 
-	kalGetFwFlavor(&aucFlavor[0]);
+	kalGetFwFlavor(prGlueInfo->prAdapter, &aucFlavor[0]);
 	for (ucIdx = 0; apucSoc2_2x2FwName[ucIdx]; ucIdx++) {
 		if ((*pucNameIdx + 3) >= ucMaxNameIdx) {
 			/* the table is not large enough */
@@ -256,7 +256,7 @@ struct BUS_INFO soc2_2x2_bus_info = {
 	.hifRst = NULL,
 	.initPcieInt = NULL,
 	.DmaShdlInit = asicPcieDmaShdlInit,
-	.setPdmaIntMask = asicPdmaIntMaskConfig,
+	.setDmaIntMask = asicPdmaIntMaskConfig,
 #endif /* _HIF_PCIE || _HIF_AXI */
 #if defined(_HIF_USB)
 	.u4UdmaWlCfg_0_Addr = CONNAC_UDMA_WLCFG_0,
@@ -316,6 +316,7 @@ struct CHIP_DBG_OPS soc2_2x2_debug_ops = {
 	.showCsrInfo = halShowHostCsrInfo,
 	.showDmaschInfo = halShowDmaschInfo,
 	.dumpMacInfo = haldumpMacInfo,
+	.dumpTxdInfo = halDumpTxdInfo,
 	.getFwDebug = halGetPleInt,
 	.setFwDebug = halSetPleInt,
 	.showHifInfo = soc2_2x2ShowHifInfo,
@@ -327,11 +328,15 @@ struct CHIP_DBG_OPS soc2_2x2_debug_ops = {
 	.showCsrInfo = NULL,
 	.showDmaschInfo = NULL,
 	.dumpMacInfo = NULL,
+	.dumpTxdInfo = NULL,
 	.showHifInfo = NULL,
 #endif
 	.showWtblInfo = NULL,
 	.printHifDbgInfo = halPrintHifDbgInfo,
 	.show_stat_info = halShowStatInfo,
+#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
+	.get_rx_rate_info = connac_get_rx_rate_info,
+#endif
 };
 
 struct mt66xx_chip_info mt66xx_chip_info_soc2_2x2 = {
@@ -385,6 +390,9 @@ struct mt66xx_chip_info mt66xx_chip_info_soc2_2x2 = {
 	.em_interface_version = MTK_EM_INTERFACE_VERSION,
 
 	.calDebugCmd = soc2_2x2wlanCalDebugCmd,
+#if CFG_SUPPORT_MDDP_AOR
+	.isSupportMddpAOR = true,
+#endif
 };
 
 struct mt66xx_hif_driver_data mt66xx_driver_data_soc2_2x2 = {

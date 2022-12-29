@@ -25,6 +25,7 @@
 static int consys_reg_init(struct platform_device *pdev);
 static int consys_reg_deinit(void);
 static int consys_check_reg_readable(void);
+static int consys_check_reg_readable_for_coredump(void);
 static int consys_is_consys_reg(unsigned int addr);
 static int consys_is_bus_hang(void);
 static int consys_dump_bus_status(void);
@@ -37,6 +38,7 @@ struct consys_reg_mng_ops g_dev_consys_reg_ops_mt6893 = {
 	.consys_reg_mng_deinit = consys_reg_deinit,
 
 	.consys_reg_mng_check_reable = consys_check_reg_readable,
+	.consys_reg_mng_check_reable_for_coredump = consys_check_reg_readable_for_coredump,
 	.consys_reg_mng_is_consys_reg = consys_is_consys_reg,
 	.consys_reg_mng_is_bus_hang = consys_is_bus_hang,
 	.consys_reg_mng_dump_bus_status = consys_dump_bus_status,
@@ -46,7 +48,7 @@ struct consys_reg_mng_ops g_dev_consys_reg_ops_mt6893 = {
 };
 
 
-const char* consys_base_addr_index_to_str[CONSYS_BASE_ADDR_MAX] = {
+static const char* consys_base_addr_index_to_str[CONSYS_BASE_ADDR_MAX] = {
 	"CONN_INFRA_RGU_BASE",
 	"CONN_INFRA_CFG_BASE",
 	"CONN_HOST_CSR_TOP_BASE",
@@ -113,17 +115,21 @@ static void consys_bus_hang_dump_a_rc(void)
 	char tmp_buf[LOG_TMP_BUF_SZ] = {'\0'};
 
 	for (i = 0xE50; i <= 0xE94; i += 4) {
-		snprintf(tmp, LOG_TMP_BUF_SZ, "[%x]",
-			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + i));
-		strncat(tmp_buf, tmp, strlen(tmp));
+		if (snprintf(tmp, LOG_TMP_BUF_SZ, "[%x]",
+			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + i)) > 0)
+			strncat(tmp_buf, tmp, strlen(tmp));
+		else
+			pr_notice("%s snprintf failed\n", __func__);
 	}
 	pr_info("[rc_trace] %s", tmp_buf);
 
 	memset(tmp_buf, '\0', LOG_TMP_BUF_SZ);
 	for (i = 0xE98; i <= 0xED4; i += 4) {
-		snprintf(tmp, LOG_TMP_BUF_SZ, "[%x]",
-			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + i));
-		strncat(tmp_buf, tmp, strlen(tmp));
+		if (snprintf(tmp, LOG_TMP_BUF_SZ, "[%x]",
+			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + i)) > 0)
+			strncat(tmp_buf, tmp, strlen(tmp));
+		else
+			pr_notice("%s snprintf failed\n", __func__);
 	}
 	pr_info("[rc_timer] %s", tmp_buf);
 }
@@ -139,10 +145,11 @@ static void consys_bus_hang_dump_a(void)
 	 * r1 : 0x1000_6110
 	 * r2 : 0x1000_6114
 	 */
-	snprintf(tmp_buf, LOG_TMP_BUF_SZ, "[%s] [0x%x][0x%x]",
+	if (snprintf(tmp_buf, LOG_TMP_BUF_SZ, "[%s] [0x%x][0x%x]",
 		(conn_hw_env.is_rc_mode ? CONSYS_POWER_MODE_RC : CONSYS_POWER_MODE_LEGACY),
 		CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_PCM_REG13_DATA),
-		CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_SRC_REQ_STA_0));
+		CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_SRC_REQ_STA_0)) < 0)
+		pr_notice("%s tmp_buf snprintf fail", __func__);
 
 	/* RC REQ STA
 	 * r3 : 0x1000_6E28
@@ -150,11 +157,13 @@ static void consys_bus_hang_dump_a(void)
 	 * r5 : 0x1000_6E30
 	 * r6 : 0x1000_6E34
 	 */
-	snprintf(rc_buf, LOG_TMP_BUF_SZ, "[%x][%x][%x][%x]",
+	if (snprintf(rc_buf, LOG_TMP_BUF_SZ, "[%x][%x][%x][%x]",
 			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_RC_RC_M04_REQ_STA_0),
 			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_RC_RC_M05_REQ_STA_0),
 			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_RC_RC_M06_REQ_STA_0),
-			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_RC_RC_M07_REQ_STA_0));
+			CONSYS_REG_READ(CON_REG_SPM_BASE_ADDR + SPM_RC_RC_M07_REQ_STA_0)) < 0)
+		pr_notice("%s rc_buf snprintf fail", __func__);
+
 
 	/*
 	 * 0x1000684C [28] DEBUG_IDX_VTCXO_STATE
@@ -207,7 +216,7 @@ static void consys_bus_hang_dump_a(void)
 	 *    5: mainpll_d6_d2 => 182M
 	 *    6: osc_d4 => 65M
 	 */
-	addr = ioremap_nocache(0x10000000, 0x20);
+	addr = ioremap(0x10000000, 0x20);
 	if (addr != NULL) {
 		r7 = CONSYS_REG_READ(addr);
 		r8 = CONSYS_REG_READ(addr + 0x10);
@@ -217,7 +226,7 @@ static void consys_bus_hang_dump_a(void)
 	/*
 	 *  r15 : 0x1000_0200 sc_md2_32k_off_en
 	 */
-	addr = ioremap_nocache(0x10000200, 0x20);
+	addr = ioremap(0x10000200, 0x20);
 	if (addr != NULL) {
 		r9 = CONSYS_REG_READ(addr);
 		iounmap(addr);
@@ -251,9 +260,10 @@ static void consys_bus_hang_dump_b(void)
 	 * 			[7]: conn_ddr_en_ack
 	 * cr1 : 0x1806_02c0
 	 */
-	snprintf(tmp_buf, LOG_TMP_BUF_SZ, "[%s] [%x]",
+	if (snprintf(tmp_buf, LOG_TMP_BUF_SZ, "[%s] [%x]",
 			(conn_hw_env.is_rc_mode ? CONSYS_POWER_MODE_RC : CONSYS_POWER_MODE_LEGACY),
-			CONSYS_REG_READ(CON_REG_HOST_CSR_ADDR + CONN_HOST_CSR_DBG_DUMMY_0));
+			CONSYS_REG_READ(CON_REG_HOST_CSR_ADDR + CONN_HOST_CSR_DBG_DUMMY_0)) < 0)
+		pr_notice("%s tmp_buf snprintf failed\n", __func__);
 
 	/* RC Mode */
 	/*
@@ -605,6 +615,10 @@ int consys_check_reg_readable(void)
 	return 1;
 }
 
+int consys_check_reg_readable_for_coredump(void)
+{
+	return consys_check_reg_readable();
+}
 
 int consys_is_consys_reg(unsigned int addr)
 {
@@ -647,7 +661,7 @@ unsigned long consys_reg_validate_idx_n_offset(unsigned int idx, unsigned long o
 	return res;
 }
 
-int consys_find_can_write_reg(unsigned int *idx, unsigned long *offset)
+int consys_find_can_write_reg_mt6893(unsigned int *idx, unsigned long *offset)
 {
 	int i;
 	size_t addr = 0, addr_offset;
@@ -687,14 +701,14 @@ int consys_find_can_write_reg(unsigned int *idx, unsigned long *offset)
 }
 
 
-unsigned long consys_reg_get_phy_addr_by_idx(unsigned int idx)
+unsigned long consys_reg_get_phy_addr_by_idx_mt6893(unsigned int idx)
 {
 	if (idx >= CONSYS_BASE_ADDR_MAX)
 		return 0;
 	return conn_reg_mt6893.reg_base_addr[idx].phy_addr;
 }
 
-unsigned long consys_reg_get_virt_addr_by_idx(unsigned int idx)
+unsigned long consys_reg_get_virt_addr_by_idx_mt6893(unsigned int idx)
 {
 	if (idx >= CONSYS_BASE_ADDR_MAX)
 		return 0;
@@ -702,7 +716,7 @@ unsigned long consys_reg_get_virt_addr_by_idx(unsigned int idx)
 }
 
 
-int consys_reg_get_chip_id_idx_offset(unsigned int *idx, unsigned long *offset)
+int consys_reg_get_chip_id_idx_offset_mt6893(unsigned int *idx, unsigned long *offset)
 {
 	*idx = CONN_INFRA_CFG_BASE_INDEX;
 	*offset = CONN_CFG_ID_OFFSET;

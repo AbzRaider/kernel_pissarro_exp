@@ -1,15 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 - 2021 MediaTek Inc.
  */
+
 #include "gps_dl_ctrld.h"
 #include "gps_each_device.h"
 #if GPS_DL_MOCK_HAL
@@ -17,6 +10,7 @@
 #endif
 #include "gps_data_link_devices.h"
 #include "gps_dl_hal_api.h"
+#include "gps_dl_time_tick.h"
 
 struct gps_dl_ctrld_context gps_dl_ctrld;
 
@@ -71,6 +65,8 @@ unsigned int gps_dl_wait_event_checker(struct gps_dl_osal_thread *pThread)
 static int gps_dl_core_opid(struct gps_dl_osal_op_dat *pOpDat)
 {
 	int ret;
+	unsigned long opid_duration;
+	unsigned long opfunc_j0, opfunc_duration;
 
 	if (pOpDat == NULL) {
 		GDL_LOGE_EVT("null operation data");
@@ -83,9 +79,24 @@ static int gps_dl_core_opid(struct gps_dl_osal_op_dat *pOpDat)
 		return -2;
 	}
 
+	/* get Op-deque time*/
+	opid_duration = gps_dl_tick_get_ms() - pOpDat->op_enq;
+	/* if op duration more than 0.5s(default value, can be set dynamically), print warning*/
+	if (opid_duration >= gps_dl_opid_enque_timeout_get())
+		GDL_LOGI("warning enque timeout: link_id (%d), evt (%d), OPID (%d), opid_duration = %lu",
+			pOpDat->au4OpData[0], pOpDat->au4OpData[1], pOpDat->opId, opid_duration);
+
+	opfunc_j0 = gps_dl_tick_get_ms();
 	if (gps_dl_core_opfunc[pOpDat->opId]) {
 		GDL_LOGD_EVT("GPS data link: operation id(%d)", pOpDat->opId);
 		ret = (*(gps_dl_core_opfunc[pOpDat->opId])) (pOpDat);
+		/* get Opfunc time*/
+		opfunc_duration = gps_dl_tick_get_ms() - opfunc_j0;
+		/* if op duration more than 0.5s(default value, can be set dynamically), print warning*/
+		if (opfunc_duration >= gps_dl_opid_opfunc_timeout_get())
+			GDL_LOGI("warning opfunc timeout: link_id (%d), evt (%d), OPID (%d), opfunc_duration = %lu",
+				pOpDat->au4OpData[0], pOpDat->au4OpData[1], pOpDat->opId, opfunc_duration);
+
 		return ret;
 	}
 

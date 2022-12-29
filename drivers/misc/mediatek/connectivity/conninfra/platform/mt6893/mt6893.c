@@ -7,12 +7,13 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/math64.h>
 #include <linux/memblock.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
-#include <mtk_clkbuf_ctl.h>
+#include <linux/types.h>
 
 #include <connectivity_build_in_adapter.h>
 
@@ -28,6 +29,17 @@
 #include "mt6893_consys_reg.h"
 #include "mt6893_consys_reg_offset.h"
 #include "mt6893_pos.h"
+#include "clock_mng.h"
+
+#if COMMON_KERNEL_CLK_SUPPORT
+#include <linux/pm_runtime.h>
+#include <linux/pm_wakeup.h>
+#else
+#include <mtk_clkbuf_ctl.h>
+#endif
+
+#include "mt6893_connsyslog.h"
+#include "coredump_mng.h"
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -62,13 +74,16 @@
 */
 
 static int consys_clk_get_from_dts(struct platform_device *pdev);
+static int consys_clk_detach(void);
 static int consys_clock_buffer_ctrl(unsigned int enable);
 static unsigned int consys_soc_chipid_get(void);
 static unsigned int consys_get_hw_ver(void);
 static void consys_clock_fail_dump(void);
 static int consys_thermal_query(void);
-static int consys_power_state(void);
+static int consys_power_state(char *buf, unsigned int size);
 static int consys_bus_clock_ctrl(enum consys_drv_type, unsigned int, int);
+static unsigned long long consys_soc_timestamp_get(void);
+static unsigned int consys_adie_detection_mt6893(void);
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -78,10 +93,11 @@ struct consys_hw_ops_struct g_consys_hw_ops_mt6893 = {
 	/* load from dts */
 	/* TODO: mtcmos should move to a independent module */
 	.consys_plt_clk_get_from_dts = consys_clk_get_from_dts,
+	.consys_plt_clk_detach = consys_clk_detach,
 
 	/* clock */
 	.consys_plt_clock_buffer_ctrl = consys_clock_buffer_ctrl,
-	.consys_plt_co_clock_type = consys_co_clock_type,
+	.consys_plt_co_clock_type = consys_co_clock_type_mt6893,
 
 	/* POS */
 	.consys_plt_conninfra_on_power_ctrl = consys_conninfra_on_power_ctrl_mt6893,
@@ -105,6 +121,7 @@ struct consys_hw_ops_struct g_consys_hw_ops_mt6893 = {
 
 	.consys_plt_spi_read = consys_spi_read_mt6893,
 	.consys_plt_spi_write = consys_spi_write_mt6893,
+	.consys_plt_spi_update_bits = consys_spi_update_bits_mt6893,
 	.consys_plt_adie_top_ck_en_on = consys_adie_top_ck_en_on_mt6893,
 	.consys_plt_adie_top_ck_en_off = consys_adie_top_ck_en_off_mt6893,
 	.consys_plt_spi_clock_switch = consys_spi_clock_switch_mt6893,
@@ -114,23 +131,31 @@ struct consys_hw_ops_struct g_consys_hw_ops_mt6893 = {
 	.consys_plt_power_state = consys_power_state,
 	.consys_plt_config_setup = consys_config_setup_mt6893,
 	.consys_plt_bus_clock_ctrl = consys_bus_clock_ctrl,
+	.consys_plt_soc_timestamp_get = consys_soc_timestamp_get,
+	.consys_plt_adie_detection = consys_adie_detection_mt6893,
 };
 
-struct clk *clk_scp_conn_main;	/*ctrl conn_power_on/off */
-struct consys_plat_thermal_data g_consys_plat_therm_data;
+#if (!COMMON_KERNEL_CLK_SUPPORT)
+static struct clk *clk_scp_conn_main;	/*ctrl conn_power_on/off */
+#endif
+
+static struct consys_plat_thermal_data_mt6893 g_consys_plat_therm_data;
 
 extern struct consys_hw_ops_struct g_consys_hw_ops_mt6893;
 extern struct consys_reg_mng_ops g_dev_consys_reg_ops_mt6893;
 extern struct consys_platform_emi_ops g_consys_platform_emi_ops_mt6893;
 extern struct consys_platform_pmic_ops g_consys_platform_pmic_ops_mt6893;
+extern struct consys_platform_coredump_ops g_consys_platform_coredump_ops_mt6893;
 
-const struct conninfra_plat_data mt6893_plat_data = {
+struct conninfra_plat_data mt6893_plat_data = {
 	.chip_id = PLATFORM_SOC_CHIP,
 	.consys_hw_version = CONN_HW_VER,
 	.hw_ops = &g_consys_hw_ops_mt6893,
 	.reg_ops = &g_dev_consys_reg_ops_mt6893,
 	.platform_emi_ops = &g_consys_platform_emi_ops_mt6893,
 	.platform_pmic_ops = &g_consys_platform_pmic_ops_mt6893,
+	.platform_coredump_ops = &g_consys_platform_coredump_ops_mt6893,
+	.connsyslog_config = &g_connsyslog_config,
 };
 
 /*******************************************************************************
@@ -146,29 +171,83 @@ const struct conninfra_plat_data mt6893_plat_data = {
 /* mtcmos contorl */
 int consys_clk_get_from_dts(struct platform_device *pdev)
 {
+#if COMMON_KERNEL_CLK_SUPPORT
+	pm_runtime_enable(&pdev->dev);
+	dev_pm_syscore_device(&pdev->dev, true);
+#else
 	clk_scp_conn_main = devm_clk_get(&pdev->dev, "conn");
 	if (IS_ERR(clk_scp_conn_main)) {
 		pr_err("[CCF]cannot get clk_scp_conn_main clock.\n");
 		return PTR_ERR(clk_scp_conn_main);
 	}
 	pr_debug("[CCF]clk_scp_conn_main=%p\n", clk_scp_conn_main);
-
+#endif
 	return 0;
 }
 
-int consys_platform_spm_conn_ctrl(unsigned int enable)
+
+int consys_clk_detach(void)
+{
+#if COMMON_KERNEL_CLK_SUPPORT
+	struct platform_device *pdev = get_consys_device();
+
+	if (pdev == NULL)
+		return 0;
+	pm_runtime_disable(&pdev->dev);
+#endif
+	return 0;
+}
+
+
+int consys_platform_spm_conn_ctrl_mt6893(unsigned int enable)
 {
 	int ret = 0;
+#if COMMON_KERNEL_CLK_SUPPORT
+	struct platform_device *pdev = get_consys_device();
+
+	if (!pdev) {
+		pr_info("get_consys_device fail.\n");
+		return -1;
+	}
+#endif
 
 	if (enable) {
+#if COMMON_KERNEL_CLK_SUPPORT
+		ret = pm_runtime_get_sync(&(pdev->dev));
+		if (ret)
+			pr_info("pm_runtime_get_sync() fail(%d)\n", ret);
+		else
+			pr_info("pm_runtime_get_sync() CONSYS ok\n");
+
+		ret = device_init_wakeup(&(pdev->dev), true);
+		if (ret)
+			pr_info("device_init_wakeup(true) fail.\n");
+		else
+			pr_info("device_init_wakeup(true) CONSYS ok\n");
+#else
 		ret = clk_prepare_enable(clk_scp_conn_main);
+#endif
 		if (ret) {
-			pr_err("Turn on oonn_infra power fail. Ret=%d\n", ret);
+			pr_info("Turn on conn_infra power fail. Ret=%d\n", ret);
 			return -1;
 		}
 	} else {
+#if COMMON_KERNEL_CLK_SUPPORT
+		ret = device_init_wakeup(&(pdev->dev), false);
+		if (ret)
+			pr_info("device_init_wakeup(false) fail.\n");
+		else
+			pr_info("device_init_wakeup(false) CONSYS ok\n");
+
+		ret = pm_runtime_put_sync(&(pdev->dev));
+		if (ret)
+			pr_info("pm_runtime_put_sync() fail.\n");
+		else
+			pr_info("pm_runtime_put_sync() CONSYS ok\n");
+#else
 		clk_disable_unprepare(clk_scp_conn_main);
 
+#endif
 	}
 
 	return ret;
@@ -180,14 +259,16 @@ int consys_clock_buffer_ctrl(unsigned int enable)
 	 * clock buffer is HW controlled, not SW controlled.
 	 * Keep this function call to update status.
 	 */
+#if (!COMMON_KERNEL_CLK_SUPPORT)
 	if (enable)
 		KERNEL_clk_buf_ctrl(CLK_BUF_CONN, true);	/*open XO_WCN*/
 	else
 		KERNEL_clk_buf_ctrl(CLK_BUF_CONN, false);	/*close XO_WCN*/
+#endif
 	return 0;
 }
 
-int consys_co_clock_type(void)
+int consys_co_clock_type_mt6893(void)
 {
 	const struct conninfra_conf *conf;
 
@@ -220,9 +301,9 @@ void consys_clock_fail_dump(void)
 }
 
 
-void update_thermal_data(struct consys_plat_thermal_data* input)
+void update_thermal_data_mt6893(struct consys_plat_thermal_data_mt6893* input)
 {
-	memcpy(&g_consys_plat_therm_data, input, sizeof(struct consys_plat_thermal_data));
+	memcpy(&g_consys_plat_therm_data, input, sizeof(struct consys_plat_thermal_data_mt6893));
 	/* Special factor, not in POS */
 	/* THERMCR1 [16:17]*/
 	CONSYS_REG_WRITE(CONN_TOP_THERM_CTL_ADDR + CONN_TOP_THERM_CTL_THERMCR1,
@@ -231,9 +312,9 @@ void update_thermal_data(struct consys_plat_thermal_data* input)
 
 }
 
-int calculate_thermal_temperature(int y)
+static int calculate_thermal_temperature(int y)
 {
-	struct consys_plat_thermal_data *data = &g_consys_plat_therm_data;
+	struct consys_plat_thermal_data_mt6893 *data = &g_consys_plat_therm_data;
 	int t;
 	int const_offset = 25;
 
@@ -246,7 +327,7 @@ int calculate_thermal_temperature(int y)
 		conn_hw_env.adie_hw_version == 0x66358A11)
 		const_offset = 28;
 
-	/* temperature = (y-b)*slope + (offset) */
+	/* temperature = (y-b)*slope + (offset) */
 	/* TODO: offset + 25 : this is only for E1, E2 is 28 */
 	t = (y - (data->thermal_b == 0 ? 0x36 : data->thermal_b)) *
 			((data->slop_molecule + 209) / 100) + (data->offset + const_offset);
@@ -276,7 +357,7 @@ int consys_thermal_query(void)
 	unsigned int i;
 	unsigned int efuse0, efuse1, efuse2, efuse3;
 
-	addr = ioremap_nocache(CONN_GPT2_CTRL_BASE, 0x100);
+	addr = ioremap(CONN_GPT2_CTRL_BASE, 0x100);
 	if (addr == NULL) {
 		pr_err("GPT2_CTRL_BASE remap fail");
 		return -1;
@@ -317,10 +398,10 @@ int consys_thermal_query(void)
 	efuse2 = CONSYS_REG_READ(CONN_INFRA_SYSRAM_BASE_ADDR + CONN_INFRA_SYSRAM_SW_CR_A_DIE_EFUSE_DATA_2);
 	efuse3 = CONSYS_REG_READ(CONN_INFRA_SYSRAM_BASE_ADDR + CONN_INFRA_SYSRAM_SW_CR_A_DIE_EFUSE_DATA_3);
 	for (i = 0; i < THERMAL_DUMP_NUM; i++) {
-		snprintf(
+		if (snprintf(
 			tmp, TEMP_SIZE, "[0x%08x]",
-			CONSYS_REG_READ(CONN_TOP_THERM_CTL_ADDR + thermal_dump_crs[i]));
-		strncat(tmp_buf, tmp, strlen(tmp));
+			CONSYS_REG_READ(CONN_TOP_THERM_CTL_ADDR + thermal_dump_crs[i])) > 0)
+			strncat(tmp_buf, tmp, strlen(tmp));
 	}
 	pr_info("[%s] efuse:[0x%08x][0x%08x][0x%08x][0x%08x] thermal dump: %s",
 		__func__, efuse0, efuse1, efuse2, efuse3, tmp_buf);
@@ -346,20 +427,20 @@ int consys_thermal_query(void)
 }
 
 
-int consys_power_state(void)
+int consys_power_state(char *buf, unsigned int size)
 {
 	const char* osc_str[] = {
 		"fm ", "gps ", "bgf ", "wf ", "ap2conn ", "conn_thm ", "conn_pta ", "conn_infra_bus "
 	};
-	char buf[256] = {'\0'};
+	char temp_buf[256] = {'\0'};
 	int r = CONSYS_REG_READ(CON_REG_HOST_CSR_ADDR + CONN_HOST_CSR_DBG_DUMMY_2);
 	int i;
 
 	for (i = 0; i < 8; i++) {
 		if ((r & (0x1 << (18 + i))) > 0)
-			strncat(buf, osc_str[i], strlen(osc_str[i]));
+			strncat(temp_buf, osc_str[i], strlen(osc_str[i]));
 	}
-	pr_info("[%s] [0x%x] %s", __func__, r, buf);
+	pr_info("[%s] [0x%x] %s", __func__, r, temp_buf);
 	return 0;
 }
 
@@ -451,4 +532,39 @@ int consys_bus_clock_ctrl(enum consys_drv_type drv_type, unsigned int bus_clock,
 		}
 	}
 	return 0;
+}
+
+static unsigned long long consys_soc_timestamp_get(void)
+{
+#define TICK_PER_MS	(13000)
+	void __iomem *addr = NULL;
+	u32 tick_h = 0, tick_l = 0, tmp_h = 0;
+	u64 timestamp = 0;
+
+	/* 0x1001_7000	sys_timer@13M
+	 * - 0x0008	CNTCV_L	32	System counter count value low
+	 * - 0x000C	CNTCV_H	32	System counter count value high
+	 */
+	addr = ioremap(0x10017000, 0x10);
+	if (addr) {
+		do {
+			tick_h = CONSYS_REG_READ(addr + 0x000c);
+			tick_l = CONSYS_REG_READ(addr + 0x0008);
+			tmp_h = CONSYS_REG_READ(addr + 0x000c);
+		} while (tick_h != tmp_h);
+		iounmap(addr);
+	} else {
+		pr_info("[%s] remap fail", __func__);
+		return 0;
+	}
+
+	timestamp = ((((u64)tick_h << 32) & 0xFFFFFFFF00000000) | ((u64)tick_l & 0x00000000FFFFFFFF));
+	do_div(timestamp, TICK_PER_MS);
+
+	return timestamp;
+}
+
+static unsigned int consys_adie_detection_mt6893(void)
+{
+	return 0x6635;
 }
